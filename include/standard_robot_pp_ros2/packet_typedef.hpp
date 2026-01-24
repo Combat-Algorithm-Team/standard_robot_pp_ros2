@@ -81,21 +81,23 @@ struct ReceiveTestData
 
   struct
   {
-    uint8_t mode; // 0:未开始 1:红色 2:蓝色（敌方颜色）
+    uint8_t enemy_color; // 0:未开始 1:红色 2:蓝色（敌方颜色）
     uint8_t game_progress;
     uint8_t robot_level;
-   uint32_t rfid_status;
+    uint32_t rfid_status;
     uint16_t current_hp;
     uint16_t maximum_hp;
     float pitch;
     float yaw;
     float bullet_speed;
     uint16_t stage_remain_time;
+    uint8_t armor_id;
+    uint8_t hurt_type;
   
-    uint8_t reserve[5];
+    uint8_t reserve[34];
   } __attribute__((packed)) data;
 
-  uint8_t frame_tail;
+  uint16_t check_sum;
 } __attribute__((packed));
 
 //Vision 数据包
@@ -463,7 +465,7 @@ struct SendTestData
   struct
   {
     uint8_t fire_advice; // 0:不开火 1:开火
-    uint8_t detect;
+    uint8_t major_number;
     uint8_t chassis_status;
     float pitch;
     float yaw;
@@ -471,10 +473,18 @@ struct SendTestData
     uint32_t nanosec;
     float vx;
     float vy;
-    uint8_t reserve[3];
+    float detect_x1;
+    float detect_y1;
+    float detect_z1;
+    uint8_t detect_number1;
+    float detect_x2;
+    float detect_y2;
+    float detect_z2;
+    uint8_t detect_number2;
+    uint8_t reserve[8];
   } __attribute__((packed)) data;
 
-  uint8_t frame_tail;
+  uint16_t check_sum;
 } __attribute__((packed));
 
 /********************************************************/

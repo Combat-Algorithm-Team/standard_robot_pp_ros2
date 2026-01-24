@@ -21,6 +21,8 @@
 namespace checksum
 {
 extern bool verify_check_sum(std::vector<uint8_t> & pchMessage);
+
+extern void append_check_sum(uint8_t * pchMessage, uint32_t dwLength);
 }  // namespace checksum
 
 namespace crc8

@@ -290,7 +290,7 @@ void StandardRobotPpRos2Node::receiveData()
 
   int sof_count = 0;
   int retry_count = 0;
-  int data_length = 32;
+  int data_length = 64;
 
   while (rclcpp::ok()) {
     // 串口状态
@@ -315,7 +315,7 @@ void StandardRobotPpRos2Node::receiveData()
 
       // crc8_ok 校验正确后读取数据段
       // 根据数据段长度读取数据
-      std::vector<uint8_t> data_buf(data_remain_length);  // len + crc
+      std::vector<uint8_t> data_buf(data_remain_length);  // len + csum
       int received_len = serial_driver_->port()->receive(data_buf);
       int received_len_sum = received_len;
       // 考虑到一次性读取数据可能存在数据量过大，读取不完整的情况。需要检测是否读取完整
@@ -332,12 +332,9 @@ void StandardRobotPpRos2Node::receiveData()
       // 数据段读取完成后添加 header_frame_buf 到 data_buf，得到完整数据包
       data_buf.insert(data_buf.begin(), sof[0]);
 
-      if (!debug_) {
-        continue;
-      }
-
-      if (data_buf[31] != SOF_TAIL) {
-        RCLCPP_ERROR(get_logger(), "Tail frame = 0x%02x error! ", data_buf[31]);
+      bool checksum_ok = checksum::verify_check_sum(data_buf);
+      if (!checksum_ok) {
+        RCLCPP_ERROR(get_logger(), "Check sum error! ");
       }
 
       ReceiveTestData received_test_data = fromVector<ReceiveTestData>(data_buf);
@@ -465,6 +462,8 @@ void StandardRobotPpRos2Node::sendData()
     }
 
     try {
+      checksum::append_check_sum(
+        reinterpret_cast<uint8_t *>(&send_test_data_), sizeof(SendTestData));
       // 发送数据
       std::vector<uint8_t> send_data = toVector(send_test_data_);
       serial_driver_->port()->send(send_data);
@@ -492,10 +491,10 @@ void StandardRobotPpRos2Node::VisionCmdCallback(const rm_interfaces::msg::Gimbal
   send_test_data_.data.sec = msg->header.stamp.sec;
   send_test_data_.data.nanosec = msg->header.stamp.nanosec;
   if (msg->distance < 0) {
-    send_test_data_.data.detect = 0;
+    send_test_data_.data.major_number = 0;
   } else {
-    send_test_data_.data.detect = 1;
-  }
+    send_test_data_.data.major_number = 1;
+  } //TODO: more major number
 }
 
 void StandardRobotPpRos2Node::setMode(SetModeClient &client, const uint8_t mode) {

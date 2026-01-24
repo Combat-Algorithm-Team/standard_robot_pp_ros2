@@ -32,6 +32,16 @@ bool verify_check_sum(std::vector<uint8_t> & pchMessage)
 
   return cSUm == fSum;
 }
+
+void append_check_sum(uint8_t * pchMessage, uint32_t dwLength)
+{
+  uint16_t cSUm = 0;
+  for (uint32_t i = 0; i < dwLength - 2; i++) {
+    cSUm += pchMessage[i];
+  }
+  pchMessage[dwLength] = (uint8_t)(cSUm & 0xFF);
+  pchMessage[dwLength + 1] = (uint8_t)((cSUm >> 8) & 0xFF);
+}
 }  // namespace checksum
 
 namespace crc8
