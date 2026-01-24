@@ -286,7 +286,6 @@ void StandardRobotPpRos2Node::receiveData()
   RCLCPP_INFO(get_logger(), "Start receiveData!");
 
   std::vector<uint8_t> sof(1);
-  std::vector<uint8_t> receive_data;
 
   int sof_count = 0;
   int retry_count = 0;
@@ -313,7 +312,6 @@ void StandardRobotPpRos2Node::receiveData()
       sof_count = 0;
       int data_remain_length = data_length - 1;  // 已经读取了 sof，占用 1 字节
 
-      // crc8_ok 校验正确后读取数据段
       // 根据数据段长度读取数据
       std::vector<uint8_t> data_buf(data_remain_length);  // len + csum
       int received_len = serial_driver_->port()->receive(data_buf);
@@ -352,18 +350,18 @@ void StandardRobotPpRos2Node::processTestData(ReceiveTestData & received_test_da
   rm_interfaces::msg::SerialReceiveData serial_receive_data;
   serial_receive_data.header.stamp = this->now() + rclcpp::Duration::from_seconds(timestamp_offset_);
   serial_receive_data.header.frame_id = vision_target_frame_;
-  serial_receive_data.mode = received_test_data.data.mode;
+  serial_receive_data.mode = received_test_data.data.enemy_color == 2 ? 1 : 0;
   serial_receive_data.bullet_speed = received_test_data.data.bullet_speed;
   serial_receive_data.roll = 0.0;
   serial_receive_data.pitch = received_test_data.data.pitch;
   serial_receive_data.yaw = received_test_data.data.yaw;
   serial_receive_data_pub_->publish(serial_receive_data);
 
-  for (auto &[service_name, client] : set_mode_clients_) {
-        if (client.mode.load() != received_test_data.data.mode && !client.on_waiting.load()) {
-          setMode(client, received_test_data.data.mode);
-        }
-      }
+  for (auto & [service_name, client] : set_mode_clients_) {
+    if (client.mode.load() != serial_receive_data.mode && !client.on_waiting.load()) {
+      setMode(client, serial_receive_data.mode);
+    }
+  }
   
   geometry_msgs::msg::TransformStamped t;
   timestamp_offset_ = this->get_parameter("timestamp_offset").as_double();
@@ -375,7 +373,6 @@ void StandardRobotPpRos2Node::processTestData(ReceiveTestData & received_test_da
   auto yaw = received_test_data.data.yaw;
   tf2::Quaternion q;
   q.setRPY(roll, pitch, yaw);
-  //std::cout<<"roll:"<<roll<<" "<<"pitch:"<<pitch<<" "<<"yaw:"<<yaw<<std::endl;
   t.transform.rotation = tf2::toMsg(q);
   tf_broadcaster_->sendTransform(t);
 
@@ -387,17 +384,32 @@ void StandardRobotPpRos2Node::processTestData(ReceiveTestData & received_test_da
   t.child_frame_id = vision_target_frame_ + "_rectify";
   tf_broadcaster_->sendTransform(t);
 
+  // base yaw to odom_vision
+  t.header.frame_id = "base_yaw_odom";
+  t.child_frame_id = "odom_vision";
+  tf2::Quaternion q1, q2, q3, q_total;
+  q1.setRPY(0.0, 0.0, yaw);
+  q2.setRPY(0.0, pitch, 0.0);
+  q3.setRPY(0.0, -pitch, -yaw);
+  q_total = q1 * q2 * q3;
+  tf2::Vector3 trans1(0.0, 0.0, 0.193);
+  tf2::Vector3 trans2(0.0, 0.0, 0.11035);
+  tf2::Vector3 trans3(0.078, 0.0, 0.0);
+  tf2::Vector3 trans_total = trans1 + 
+                          (tf2::quatRotate(q1, trans2)) + 
+                          (tf2::quatRotate(q1 * q2, trans3));
+  t.transform.translation = tf2::toMsg(trans_total);
+  t.transform.rotation = tf2::toMsg(q_total);
+  tf_broadcaster_->sendTransform(t);
+
   // 发布 robot_status
   pb_rm_interfaces::msg::RobotStatus robot_status_msg;
   robot_status_msg.robot_id = 7;
   robot_status_msg.robot_level = received_test_data.data.robot_level;
   robot_status_msg.current_hp = received_test_data.data.current_hp;
   robot_status_msg.maximum_hp = received_test_data.data.maximum_hp;
-  if (last_hp_ - robot_status_msg.current_hp > 0) {
-    robot_status_msg.is_hp_deduced = true;
-  }
-  last_hp_ = received_test_data.data.current_hp;
-
+  robot_status_msg.armor_id = received_test_data.data.armor_id;
+  robot_status_msg.hp_deduction_reason = received_test_data.data.hp_deduction_reason;
   robot_status_pub_->publish(robot_status_msg);
 
   // 发布 game_status
@@ -420,7 +432,6 @@ void StandardRobotPpRos2Node::processTestData(ReceiveTestData & received_test_da
   rfid_status_msg.center_gain_point = (received_test_data.data.rfid_status & (1 << 23)) != 0;
   rfid_status_msg.enemy_fortress_gain_point = (received_test_data.data.rfid_status & (1 << 24)) != 0;
   rfid_status_msg.enemy_outpost_gain_point = (received_test_data.data.rfid_status & (1 << 25)) != 0;
-
   uint32_t valid_bits = received_test_data.data.rfid_status & 0xFFFFFFFF;
   int set_bits_count = std::bitset<32>(valid_bits).count();
   if (set_bits_count == 1) {
@@ -441,9 +452,9 @@ void StandardRobotPpRos2Node::sendData()
   RCLCPP_INFO(get_logger(), "Start send Data!");
 
   send_test_data_.frame_header = SOF_SEND;
-  send_test_data_.frame_tail = SOF_TAIL;
+  send_test_data_.check_sum = 0;
   send_test_data_.data.fire_advice = 0;
-  send_test_data_.data.detect = 0;
+  send_test_data_.data.major_number = 0;
   send_test_data_.data.chassis_status = 0;
   send_test_data_.data.pitch = 0.0;
   send_test_data_.data.yaw = 0.0;

@@ -92,9 +92,10 @@ struct ReceiveTestData
     float bullet_speed;
     uint16_t stage_remain_time;
     uint8_t armor_id;
-    uint8_t hurt_type;
+    uint8_t hp_deduction_reason;
+    float yaw_diff;
   
-    uint8_t reserve[34];
+    uint8_t reserve[30];
   } __attribute__((packed)) data;
 
   uint16_t check_sum;
