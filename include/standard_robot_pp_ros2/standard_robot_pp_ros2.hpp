@@ -96,8 +96,7 @@ private:
   rclcpp::Subscription<rm_interfaces::msg::GimbalCmd>::SharedPtr rune_solver_sub_;
 
   std::vector<rclcpp::Client<rm_interfaces::srv::SetMode>::SharedPtr> getClients(
-    rclcpp::Node::SharedPtr node) const;
-
+    rclcpp::Node * node) const;
 
   std::unordered_map<std::string, rclcpp::Publisher<example_interfaces::msg::Float64>::SharedPtr>
     debug_pub_map_;

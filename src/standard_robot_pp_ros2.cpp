@@ -118,7 +118,7 @@ void StandardRobotPpRos2Node::createSubscription()
 }
 
 std::vector<rclcpp::Client<rm_interfaces::srv::SetMode>::SharedPtr> StandardRobotPpRos2Node::getClients(
-  rclcpp::Node::SharedPtr node) const {
+  rclcpp::Node * node) const {
   auto client1 = node->create_client<rm_interfaces::srv::SetMode>("armor_detector/set_mode",
                                                                   rmw_qos_profile_services_default);
   auto client2 = node->create_client<rm_interfaces::srv::SetMode>("armor_solver/set_mode",
@@ -434,11 +434,12 @@ void StandardRobotPpRos2Node::processTestData(ReceiveTestData & received_test_da
   rfid_status_msg.enemy_outpost_gain_point = (received_test_data.data.rfid_status & (1 << 25)) != 0;
   uint32_t valid_bits = received_test_data.data.rfid_status & 0xFFFFFFFF;
   int set_bits_count = std::bitset<32>(valid_bits).count();
-  if (set_bits_count == 1) {
+  if (set_bits_count == 1 || set_bits_count == 0) {
     rfid_status_pub_->publish(rfid_status_msg);
   }
   else {
-    RCLCPP_WARN(get_logger(), "RFID status has multiple bits set, not publishing!");
+    RCLCPP_WARN(get_logger(), "RFID status has multiple bits set, not publishing! The RFID Status = %x",
+      received_test_data.data.rfid_status);
     return;
   }
 }
