@@ -65,6 +65,7 @@ private:
   // Parameter 
   std::string device_name_;
   std::string vision_target_frame_;
+  float nav_k_;
 
   bool is_usb_ok_;
   bool debug_;
