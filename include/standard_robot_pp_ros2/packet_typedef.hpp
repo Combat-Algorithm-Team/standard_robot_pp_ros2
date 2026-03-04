@@ -21,39 +21,50 @@
 
 namespace standard_robot_pp_ros2
 {
-const uint8_t SOF_RECEIVE = 0x5A;
+const uint8_t SOF_HEAD = 0xA5;
 const uint8_t SOF_SEND = 0x5A;
 const uint8_t SOF_TAIL = 0x55;
 
 // Receive
-const uint8_t ID_DEBUG = 0x01;
-const uint8_t ID_VISION_DATA = 0x02;
-const uint8_t ID_ROBOT_STATE_INFO = 0x03;
-const uint8_t ID_EVENT_DATA = 0x04;
-const uint8_t ID_PID_DEBUG = 0x05;
-const uint8_t ID_ALL_ROBOT_HP = 0x06;
-const uint8_t ID_GAME_STATUS = 0x07;
-const uint8_t ID_ROBOT_MOTION = 0x08;
-const uint8_t ID_GROUND_ROBOT_POSITION = 0x09;
-const uint8_t ID_RFID_STATUS = 0x0A;
-const uint8_t ID_ROBOT_STATUS = 0x0B;
-const uint8_t ID_JOINT_STATE = 0x0C;
-const uint8_t ID_BUFF = 0x0D;
-const uint8_t ID_TEST_DATA = 0x0E;
+const uint16_t ID_GAME_STATUS = 0x0001;
+const uint16_t ID_GAME_RESULT = 0x0002;
+const uint16_t ID_GAME_ROBOT_HP = 0x0003;
+const uint16_t ID_EVENT_DATA = 0x0101;
+const uint16_t ID_REFREE_WARNNING = 0x0104;
+const uint16_t ID_DART_INFO =0x0105;
+const uint16_t ID_ROBOT_STATUS = 0x0201;
+const uint16_t ID_POWER_HEAT_DATA = 0x0202;
+const uint16_t ID_ROBOT_POS = 0x0203;
+const uint16_t ID_BUFF = 0x0204;
+const uint16_t ID_HURT_DATA = 0x0206;
+const uint16_t ID_SHOOT_DATA = 0x0207;
+const uint16_t ID_PROJECTILE_ALLOWANCE = 0x0208;
+const uint16_t ID_RFID_STATUS = 0x0209;
+const uint16_t ID_DART_CLIENT_CMD = 0x020A;
+const uint16_t ID_GROUND_ROBOT_POSITION = 0x020B;
+const uint16_t ID_LIDAR_MARK_DATA = 0x020C;
+const uint16_t ID_SENTRY_INFO = 0x020D;
+const uint16_t ID_RADAR_INFO = 0x020E;
+
+const uint16_t ID_DEBUG = 0x0401;
+const uint16_t ID_VISION_DATA = 0x0402;
+const uint16_t ID_PID_DEBUG = 0x0403;
 
 // Send
-const uint8_t ID_VISION_CMD = 0x01;
-const uint8_t ID_NAV_CMD = 0x02;
+const uint16_t ID_VISION_CMD = 0x01;
+const uint16_t ID_NAV_CMD = 0x02;
 
 const uint8_t DEBUG_PACKAGE_NUM = 10;
 const uint8_t DEBUG_PACKAGE_NAME_LEN = 10;
 
+const uint16_t MAX_PACKAGE_LEN = 64;
+
 struct HeaderFrame
 {
-  uint8_t sof;  // 数据帧起始字节，固定值为 0x5A
-  uint8_t len;  // 数据段长度
-  uint8_t id;   // 数据段id
-  uint8_t crc;  // 数据帧头的 CRC8 校验
+  uint8_t sof;   // 数据帧起始字节，固定值为 0xA5
+  uint16_t len;  // 数据段长度
+  uint8_t seq;   // 数据包序号
+  uint8_t crc8;  // 数据帧头的 CRC8 校验
 } __attribute__((packed));
 
 /********************************************************/
@@ -61,10 +72,12 @@ struct HeaderFrame
 /********************************************************/
 
 // 串口调试数据包
-struct ReceiveDebugData
+struct DebugPackage
 {
   HeaderFrame frame_header;
+  uint16_t cmd_id;
   uint32_t time_stamp;
+
   struct
   {
     uint8_t name[DEBUG_PACKAGE_NAME_LEN];
@@ -72,221 +85,291 @@ struct ReceiveDebugData
     float data;
   } __attribute__((packed)) packages[DEBUG_PACKAGE_NUM];
 
-  uint16_t checksum;
+  uint16_t crc16;
 } __attribute__((packed));
 
-struct ReceiveTestData
+// 比赛状态数据包
+struct GameStatusPackage
 {
-  uint8_t frame_header;
+  HeaderFrame frame_header;
+  uint16_t cmd_id;
 
   struct
   {
-    uint8_t enemy_color; // 0:未开始 1:红色 2:蓝色（敌方颜色）
-    uint8_t game_progress;
+    uint8_t game_type : 4;
+    uint8_t game_progress : 4;
+    uint16_t stage_remain_time;
+    uint64_t sync_time_stamp;
+  } __attribute__((packed)) data;
+
+  uint16_t crc16;
+} __attribute__((packed));
+
+// 比赛结果数据包
+struct GameResultPackage
+{
+  HeaderFrame frame_header;
+  uint16_t cmd_id;
+
+  struct
+  {
+    uint8_t winner;
+  } __attribute__((packed)) data;
+
+  uint16_t crc16;
+} __attribute__((packed));
+
+// 比赛友方机器人血量数据包
+struct GameRobotHpPackage
+{
+  HeaderFrame frame_header;
+  uint16_t cmd_id;
+
+  struct
+  {
+    uint16_t ally_1_robot_hp;
+    uint16_t ally_2_robot_hp;
+    uint16_t ally_3_robot_hp;
+    uint16_t ally_4_robot_hp;
+    uint16_t ally_7_robot_hp;
+    uint16_t ally_outpost_hp;
+    uint16_t ally_base_hp;
+  } __attribute__((packed)) data;
+
+  uint16_t crc16;
+} __attribute__((packed));
+
+// 场地事件数据包
+struct EventDataPackage
+{
+  HeaderFrame frame_header;
+  uint16_t cmd_id;
+
+  struct
+  {
+    uint32_t ally_supply_zone_non_exchange : 1;
+    uint32_t ally_supply_zone_exchange : 1;
+    uint32_t ally_supply_zone : 1;
+
+    uint32_t ally_small_power_rune : 2;
+    uint32_t ally_big_power_rune : 2;
+
+    uint32_t central_highland : 2;
+    uint32_t trapezoidal_highland : 2;
+
+    uint32_t reserved1 : 12;
+
+    uint32_t center_gain_point : 2;
+    uint32_t ally_fortress_gain_point : 2;
+    uint32_t ally_outpost_gain_point : 2;
+    uint32_t base_gain_point : 1;
+
+    uint32_t reserved2 : 2;
+  } __attribute__((packed)) data;
+
+  uint16_t crc16;
+} __attribute__((packed));
+
+// 裁判警告数据包
+struct RefreeWarnningPackage
+{
+  HeaderFrame frame_header;
+  uint16_t cmd_id;
+
+  struct
+  {
+    uint8_t reserve[3];
+  } __attribute__((packed)) data;
+
+  uint16_t crc16;
+} __attribute__((packed));
+
+// 飞镖发射信息数据包
+struct DartInfoPackage
+{
+  HeaderFrame frame_header;
+  uint16_t cmd_id;
+
+  struct
+  {
+    uint8_t reserve[3];
+  } __attribute__((packed)) data;
+
+  uint16_t crc16;
+} __attribute__((packed));
+
+// 机器人性能体系状态数据包
+struct RobotStatusPackage
+{
+  HeaderFrame frame_header;
+  uint16_t cmd_id;
+
+  struct
+  {
+    uint8_t robot_id;
     uint8_t robot_level;
-    uint32_t rfid_status;
     uint16_t current_hp;
     uint16_t maximum_hp;
-    float pitch;
-    float yaw;
-    float bullet_speed;
-    uint16_t stage_remain_time;
-    uint8_t armor_id;
-    uint8_t hp_deduction_reason;
-    float yaw_diff;
-  
-    uint8_t reserve[29];
+    uint16_t shooter_barrel_cooling_value;
+    uint16_t shooter_barrel_heat_limit;
+    uint16_t chassis_power_limit;
+    uint8_t power_management_gimbal_output : 1;
+    uint8_t power_management_chassis_output : 1;
+    uint8_t power_management_shooter_output : 1;
   } __attribute__((packed)) data;
 
-  uint16_t check_sum;
-  uint8_t frame_tail;
+  uint16_t crc16;
 } __attribute__((packed));
 
-//Vision 数据包
-// struct ReceiveImuData
-// {
-//   HeaderFrame frame_header;
-//   uint32_t time_stamp;
-
-//   struct
-//   {
-//     float yaw;    
-//     float pitch;  
-
-//     uint8_t enemy_color;
-
-//   } __attribute__((packed)) data;
-
-//   // uint16_t crc;
-// } __attribute__((packed));
-
-// IMU 数据包
-struct ReceiveImuData
+// 底盘缓冲能量和射击热量数据包
+struct PowerHeatDataPackage
 {
   HeaderFrame frame_header;
-  uint32_t time_stamp;
+  uint16_t cmd_id;
 
   struct
   {
-    float yaw;    // rad
-    float pitch;  // rad
-    float roll;   // rad
-
-    float yaw_vel;    // rad/s
-    float pitch_vel;  // rad/s
-    float roll_vel;   // rad/s
-
-    // float x_accel;  // m/s^2
-    // float y_accel;  // m/s^2
-    // float z_accel;  // m/s^2
+    uint32_t reserve[2];
+    uint16_t buffer_energy;
+    uint16_t shooter_17mm_barrel_heat;
+    uint16_t shooter_42mm_barrel_heat; 
   } __attribute__((packed)) data;
 
-  // uint16_t crc;
+  uint16_t crc16;
 } __attribute__((packed));
 
-// 机器人信息数据包
-struct ReceiveRobotInfoData
+// 机器人位姿数据包
+struct RobotPosPackage
 {
   HeaderFrame frame_header;
-  uint32_t time_stamp;
+  uint16_t cmd_id;
 
   struct
   {
-    /// @brief 机器人部位类型 2 bytes
-    struct
-    {
-      uint16_t chassis : 3;
-      uint16_t gimbal : 3;
-      uint16_t shoot : 3;
-      uint16_t arm : 3;
-      uint16_t custom_controller : 3;
-      uint16_t reserve : 1;
-    } __attribute__((packed)) type;
-
-    /// @brief 机器人部位状态 1 byte
-    /// @note 0: 错误，1: 正常
-    struct
-    {
-      uint8_t chassis : 1;
-      uint8_t gimbal : 1;
-      uint8_t shoot : 1;
-      uint8_t arm : 1;
-      uint8_t custom_controller : 1;
-      uint8_t reserve : 3;
-    } __attribute__((packed)) state;
+    float x;
+    float y;
+    float angle;  
   } __attribute__((packed)) data;
 
-  // uint16_t crc;
+  uint16_t crc16;
 } __attribute__((packed));
 
-// 事件数据包
-struct ReceiveEventData
+// 机器人增益和底盘能量数据包
+struct BuffPackage
 {
   HeaderFrame frame_header;
-  uint32_t time_stamp;
+  uint16_t cmd_id;
 
   struct
   {
-    uint8_t non_overlapping_supply_zone : 1;
-    uint8_t overlapping_supply_zone : 1;
-    uint8_t supply_zone : 1;
-
-    uint8_t small_energy : 1;
-    uint8_t big_energy : 1;
-
-    uint8_t central_highland : 2;
-    uint8_t reserved1 : 1;
-
-    uint8_t trapezoidal_highland : 2;
-
-    uint8_t center_gain_zone : 2;
-
-    uint8_t reserved2 : 4;
-  } __attribute__((packed)) data;
-  // uint16_t crc;
-} __attribute__((packed));
-
-// PID调参数据包
-struct ReceivePidDebugData
-{
-  HeaderFrame frame_header;
-  uint32_t time_stamp;
-  struct
-  {
-    float fdb;
-    float ref;
-    float pid_out;
+    uint8_t recovery_buff;
+    uint16_t cooling_buff;
+    uint8_t defence_buff;
+    uint8_t vulnerability_buff;
+    uint16_t attack_buff;
+    uint8_t remaining_energy; 
   } __attribute__((packed)) data;
 
-  // uint16_t crc;
+  uint16_t crc16;
 } __attribute__((packed));
 
-// 全场机器人hp信息数据包
-struct ReceiveAllRobotHpData
+// 伤害状态数据包
+struct HurtDataPackage
 {
   HeaderFrame frame_header;
-  uint32_t time_stamp;
+  uint16_t cmd_id;
 
   struct
   {
-    uint16_t red_1_robot_hp;
-    uint16_t red_2_robot_hp;
-    uint16_t red_3_robot_hp;
-    uint16_t red_4_robot_hp;
-    uint16_t red_7_robot_hp;
-    uint16_t red_outpost_hp;
-    uint16_t red_base_hp;
-
-    uint16_t blue_1_robot_hp;
-    uint16_t blue_2_robot_hp;
-    uint16_t blue_3_robot_hp;
-    uint16_t blue_4_robot_hp;
-    uint16_t blue_7_robot_hp;
-    uint16_t blue_outpost_hp;
-    uint16_t blue_base_hp;
+    uint8_t armor_id : 4;
+    uint8_t hp_deduction_reason : 4; 
   } __attribute__((packed)) data;
 
-  // uint16_t crc;
+  uint16_t crc16;
 } __attribute__((packed));
 
-// 比赛信息数据包
-struct ReceiveGameStatusData
+// 机器人射击数据包
+struct ShootDataPackage
 {
   HeaderFrame frame_header;
-  uint32_t time_stamp;
+  uint16_t cmd_id;
 
   struct
   {
-    uint8_t game_progress;
-    uint16_t stage_remain_time;
+    uint8_t bullet_type;
+    uint8_t shooter_number;
+    uint8_t launching_frequency;
+    float initial_speed;
   } __attribute__((packed)) data;
 
-  // uint16_t crc;
+  uint16_t crc16;
 } __attribute__((packed));
 
-// 机器人运动数据包
-struct ReceiveRobotMotionData
+// 机器人与比赛允许发弹量和金币数据包
+struct ProjectileAllowancePackage
 {
   HeaderFrame frame_header;
-  uint32_t time_stamp;
+  uint16_t cmd_id;
 
   struct
   {
-    struct
-    {
-      float vx;
-      float vy;
-      float wz;
-    } __attribute__((packed)) speed_vector;
+    uint16_t projectile_allowance_17mm;
+    uint16_t projectile_allowance_42mm;
+    uint16_t remaining_gold_coin;
+    uint16_t projectile_allowance_fortress; 
   } __attribute__((packed)) data;
-  // uint16_t crc;
+
+  uint16_t crc16;
 } __attribute__((packed));
 
-// 地面机器人位置数据包
-struct ReceiveGroundRobotPosition
+// RFID 状态数据包
+struct RfidStatusPackage
 {
   HeaderFrame frame_header;
-  uint32_t time_stamp;
+  uint16_t cmd_id;
+
+  struct
+  {
+    uint32_t ally_base_gain_point : 1;
+    uint32_t ally_central_highland_gain_point : 1;
+    uint32_t enemy_central_highland_gain_point : 1;
+    uint32_t reserved1 : 14;
+    uint32_t ally_fortress_gain_point : 1;
+    uint32_t ally_outpost_gain_point : 1;
+    uint32_t ally_supply_point_non_exchange : 1;
+    uint32_t ally_supply_point_exchange : 1;
+    uint32_t reserved2 : 2;
+    uint32_t center_gain_point : 1;
+    uint32_t enemy_fortress_gain_point : 1;
+    uint32_t enemy_outpost_gain_point : 1;
+    uint32_t reserved3 : 6;
+
+    uint8_t reserve4;
+  } __attribute__((packed)) data;
+
+  uint16_t crc16;
+} __attribute__((packed));
+
+// 飞镖站状态数据包
+struct DartClientCmdPackage
+{
+  HeaderFrame frame_header;
+  uint16_t cmd_id;
+
+  struct
+  {
+    uint8_t reserve[6];
+  } __attribute__((packed)) data;
+
+  uint16_t crc16;
+} __attribute__((packed));
+
+// 己方地面机器人位置数据包
+struct GroundRobotPositionPackage
+{
+  HeaderFrame frame_header;
+  uint16_t cmd_id;
+
   struct
   {
     float hero_x;
@@ -301,102 +384,94 @@ struct ReceiveGroundRobotPosition
     float standard_4_x;
     float standard_4_y;
 
-    float reserved1;
-    float reserved2;
+    float reserve[2];
   } __attribute__((packed)) data;
-  // uint16_t crc;
+
+  uint16_t crc16;
 } __attribute__((packed));
 
-// RFID 状态数据包
-struct ReceiveRfidStatus
+// 雷达易伤状态数据包
+struct LidarMarkDataPackage
 {
   HeaderFrame frame_header;
-  uint32_t time_stamp;
+  uint16_t cmd_id;
 
   struct
   {
-    uint16_t base_gain_point : 1;
-    uint16_t ally_central_highland_gain_point : 1;
-    uint16_t enemy_central_highland_gain_point : 1;
-    uint16_t ally_fortress_gain_point : 1;
-    uint16_t ally_outpost_gain_point : 1;
-    uint16_t ally_supply_zone_non_exchange : 1;
-    uint16_t ally_supply_zone_exchange : 1;
-    uint16_t ally_assemble_island : 1;
-    uint16_t enemy_assemble_island : 1;
-    uint16_t center_gain_point : 1;
-    uint16_t enemy_fortress_gain_point : 1;
-    uint16_t enemy_outpost_gain_point : 1;
-    uint16_t reserved : 4;
+    uint16_t reserve;
   } __attribute__((packed)) data;
-  // uint16_t crc;
+
+  uint16_t crc16;
 } __attribute__((packed));
 
-// 机器人状态数据包
-struct ReceiveRobotStatus
+// 哨兵信息数据包
+struct SentryInfoPackage
 {
   HeaderFrame frame_header;
-
-  uint32_t time_stamp;
+  uint16_t cmd_id;
 
   struct
   {
-    uint8_t robot_id;
-    uint8_t robot_level;
-    uint16_t current_up;
-    uint16_t maximum_hp;
-    uint16_t shooter_barrel_cooling_value;
-    uint16_t shooter_barrel_heat_limit;
-
-    uint16_t shooter_17mm_1_barrel_heat;
-
-    float robot_pos_x;
-    float robot_pos_y;
-    float robot_pos_angle;
-
-    uint8_t armor_id : 4;
-    uint8_t hp_deduction_reason : 4;
-
-    uint16_t projectile_allowance_17mm;
+    uint32_t reserve1;
+    uint16_t disengaged_state : 1;
+    uint16_t reserve2 : 11;
+    uint16_t current_state : 2;
+    uint16_t ally_power_rune_state : 1;
+    uint16_t reserve3 : 1;
   } __attribute__((packed)) data;
-  // uint16_t crc;
+
+  uint16_t crc16;
 } __attribute__((packed));
 
-// 视觉云台状态数据包
-struct ReceiveJointState
+// 雷达信息数据包
+struct RadarInfoPackage
 {
   HeaderFrame frame_header;
-  uint32_t time_stamp;
+  uint16_t cmd_id;
 
   struct
   {
+    uint8_t reserve;
+  } __attribute__((packed)) data;
+
+  uint16_t crc16;
+} __attribute__((packed));
+
+// Vision 数据包
+struct VisionDataPackage
+{
+  HeaderFrame frame_header;
+  uint16_t cmd_id;
+
+  struct
+  {
+    float time_stamp;
+    uint8_t enemy_color;
     float pitch;
     float yaw;
-
-    uint8_t mode;
+    float yaw_diff;
+    float bullet_speed;
   } __attribute__((packed)) data;
 
-  // uint16_t crc;
+  uint16_t check_sum;
 } __attribute__((packed));
 
-// 机器人增益和底盘能量数据包
-struct ReceiveBuff
+// PID调参数据包
+struct PIDDebugPackage
 {
   HeaderFrame frame_header;
-  uint32_t time_stamp;
+  uint16_t cmd_id;
 
   struct
   {
-    uint8_t recovery_buff;
-    uint8_t cooling_buff;
-    uint8_t defence_buff;
-    uint8_t vulnerability_buff;
-    uint16_t attack_buff;
-    uint8_t remaining_energy;
+    float kp;
+    float ki;
+    float kd;
   } __attribute__((packed)) data;
 
-  // uint16_t crc;
+  uint16_t crc16;
 } __attribute__((packed));
+
 /********************************************************/
 /* Send data                                            */
 /********************************************************/

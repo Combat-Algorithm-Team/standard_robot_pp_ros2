@@ -93,18 +93,35 @@ StandardRobotPpRos2Node::~StandardRobotPpRos2Node()
 void StandardRobotPpRos2Node::createPublisher()
 {
   game_status_pub_ =
-    this->create_publisher<pb_rm_interfaces::msg::GameStatus>("referee/game_status", 10);
-  rfid_status_pub_ =
-    this->create_publisher<pb_rm_interfaces::msg::RfidStatus>("referee/rfid_status", 10);
+    this->create_publisher<combat_rm_interfaces::msg::GameStatus>("referee/game_status", 10);
+  game_robot_hp_pub_ =
+    this->create_publisher<combat_rm_interfaces::msg::GameRobotHp>("referee/game_robot_hp", 10);
+  event_data_pub_ =
+    this->create_publisher<combat_rm_interfaces::msg::EventData>("referee/event_data", 10);
   robot_status_pub_ =
-    this->create_publisher<pb_rm_interfaces::msg::RobotStatus>("referee/robot_status", 10);
-  serial_receive_data_pub_ = this->create_publisher<rm_interfaces::msg::SerialReceiveData>(
+    this->create_publisher<combat_rm_interfaces::msg::RobotStatus>("referee/robot_status", 10);
+  robot_pos_pub_ =
+    this->create_publisher<combat_rm_interfaces::msg::RobotPos>("referee/robot_pos", 10);
+  buff_pub_ =
+    this->create_publisher<combat_rm_interfaces::msg::Buff>("referee/buff", 10);
+  hurt_data_pub_ =
+    this->create_publisher<combat_rm_interfaces::msg::HurtData>("referee/hurt_data", 10);
+  rfid_status_pub_ =
+    this->create_publisher<combat_rm_interfaces::msg::RfidStatus>("referee/rfid_status", 10);
+  robot_status_pub_ =
+    this->create_publisher<combat_rm_interfaces::msg::RobotStatus>("referee/robot_status", 10);
+  ground_robot_position_pub_ =
+    this->create_publisher<combat_rm_interfaces::msg::GroundRobotPosition>("referee/ground_robot_position", 10);
+  sentry_info_pub_ =
+    this->create_publisher<combat_rm_interfaces::msg::SentryInfo>("referee/sentry_info", 10);
+
+  vision_data_pub_ = this->create_publisher<rm_interfaces::msg::SerialReceiveData>(
     "serial/receive", rclcpp::SensorDataQoS());
 }
 
 void StandardRobotPpRos2Node::createSubscription()
 {
-  chassis_cmd_sub_ = this->create_subscription<pb_rm_interfaces::msg::NavigationCmd>(
+  chassis_cmd_sub_ = this->create_subscription<combat_rm_interfaces::msg::NavigationCmd>(
     "navigation_cmd", rclcpp::SensorDataQoS(),
     std::bind(&StandardRobotPpRos2Node::NavCmdCallback, this, std::placeholders::_1));
 
@@ -241,48 +258,68 @@ void StandardRobotPpRos2Node::serialPortProtect()
 {
   RCLCPP_INFO(get_logger(), "Start serialPortProtect!");
 
-  // @TODO: 1.保持串口连接 2.串口断开重连 3.串口异常处理
-
-  // 初始化串口
-  serial_driver_->init_port(device_name_, *device_config_);
-  // 尝试打开串口
-  try {
-    if (!serial_driver_->port()->is_open()) {
-      serial_driver_->port()->open();
-      RCLCPP_WARN(get_logger(), "Serial port opened!");
-      is_usb_ok_ = true;
-    }
-  } catch (const std::exception & ex) {
-    RCLCPP_ERROR(get_logger(), "Open serial port failed : %s", ex.what());
-    is_usb_ok_ = false;
-  }
-
-  is_usb_ok_ = true;
-  std::this_thread::sleep_for(std::chrono::milliseconds(USB_PROTECT_SLEEP_TIME));
-
   while (rclcpp::ok()) {
-    if (!is_usb_ok_) {
-      try {
-        if (serial_driver_->port()->is_open()) {
-          serial_driver_->port()->close();
+    try {
+      // 1. check if serial driver and port are valid and open
+      if (!serial_driver_ || !serial_driver_->port() || !serial_driver_->port()->is_open()) {
+        RCLCPP_WARN(get_logger(), "Serial port is not open, try to reconnect...");
+        
+        // reinit serial driver and port
+        if (serial_driver_) {
+          serial_driver_->init_port(device_name_, *device_config_);
+        }
+        
+        // try to open the port
+        if (serial_driver_->port() && !serial_driver_->port()->is_open()) {
+          serial_driver_->port()->open();
         }
 
-        serial_driver_->port()->open();
-
+        // check if the port is open
         if (serial_driver_->port()->is_open()) {
-          RCLCPP_INFO(get_logger(), "Serial port opened!");
+          RCLCPP_INFO(get_logger(), "Serial port %s opened successfully!", device_name_.c_str());
           is_usb_ok_ = true;
+        } else {
+          RCLCPP_ERROR(get_logger(), "Serial port %s open failed (port is null or open failed)", device_name_.c_str());
+          is_usb_ok_ = false;
         }
-      } catch (const std::exception & ex) {
-        is_usb_ok_ = false;
-        RCLCPP_ERROR(get_logger(), "Open serial port failed : %s", ex.what());
+      } 
+      // the serial port is open
+      // TODO: 可以在这里添加额外的串口检查，例如发送心跳包或读取数据验证通信是否正常
+      else {
+        is_usb_ok_ = true;
+      }
+    } 
+    // catch exception
+    catch (const std::exception & ex) {
+      RCLCPP_ERROR(get_logger(), "Serial port exception: %s", ex.what());
+      is_usb_ok_ = false;
+
+      try {
+        if (serial_driver_ && serial_driver_->port() && serial_driver_->port()->is_open()) {
+          serial_driver_->port()->close();
+          RCLCPP_WARN(get_logger(), "Serial port closed due to exception");
+        }
+      } catch (const std::exception & close_ex) {
+        RCLCPP_ERROR(get_logger(), "Failed to close serial port: %s", close_ex.what());
       }
     }
 
-    // thread sleep
+    // sleep for a while before next check
     std::this_thread::sleep_for(std::chrono::milliseconds(USB_PROTECT_SLEEP_TIME));
   }
+
+  // close serial port on exit
+  RCLCPP_INFO(get_logger(), "serialPortProtect exit, close serial port");
+  try {
+    if (serial_driver_ && serial_driver_->port() && serial_driver_->port()->is_open()) {
+      serial_driver_->port()->close();
+    }
+  } catch (const std::exception & ex) {
+    RCLCPP_ERROR(get_logger(), "Failed to close serial port on exit: %s", ex.what());
+  }
+  is_usb_ok_ = false;
 }
+
 
 /********************************************************/
 /* Receive data                                         */
@@ -294,38 +331,58 @@ void StandardRobotPpRos2Node::receiveData()
 
   std::vector<uint8_t> sof(1);
 
-  int sof_count = 0;
-  int retry_count = 0;
-  int data_length = 64;
+  int time_waiting = 0;
+  int sof_err_count = 0;
 
   while (rclcpp::ok()) {
     // 串口状态
     if (!is_usb_ok_) {
-      RCLCPP_WARN(get_logger(), "receive: usb is not ok! Retry count: %d", retry_count++);
+      RCLCPP_WARN(get_logger(), "Receive: Usb is not ok! Wait for : %d s", time_waiting++);
       std::this_thread::sleep_for(std::chrono::milliseconds(USB_NOT_OK_SLEEP_TIME));
       continue;
     }
 
     try {
+      if (sof_err_count >= MAX_PACKAGE_LEN) {
+        RCLCPP_WARN(get_logger(), "Receive: SOF error count over 64! SOF_HEAD not found. Data receive fail.");
+        RCLCPP_WARN(get_logger(), "Set usb is not ok!");
+        is_usb_ok_ = false;
+      }
+
       serial_driver_->port()->receive(sof);
 
-      if (sof[0] != SOF_RECEIVE) {
-        sof_count++;
-        RCLCPP_INFO(get_logger(), "Finding sof, cnt=%d", sof_count);
+      if (sof[0] != SOF_HEAD) {
+        sof_err_count++;
+        RCLCPP_INFO(get_logger(), "Finding sof, cnt=%d", sof_err_count);
         continue;
       }
 
-      // Reset sof_count when SOF_RECEIVE is found
-      sof_count = 0;
-      int data_remain_length = data_length - 1;  // 已经读取了 sof，占用 1 字节
+      // Reset sof_count when SOF_HEAD is found
+      sof_err_count = 0;
 
+      // sof[0] == SOF_HEAD 后读取剩余 header_frame 内容
+      std::vector<uint8_t> header_frame_buf(4);
+
+      serial_driver_->port()->receive(header_frame_buf);  // 读取除 sof 外剩下的包头数据
+      header_frame_buf.insert(header_frame_buf.begin(), sof[0]);  // 添加 sof
+      HeaderFrame header_frame = fromVector<HeaderFrame>(header_frame_buf);
+
+      // HeaderFrame CRC8 check
+      bool crc8_ok = crc8::verify_CRC8_check_sum(
+        reinterpret_cast<uint8_t *>(&header_frame), sizeof(header_frame));
+      if (!crc8_ok) {
+        RCLCPP_ERROR(get_logger(), "Header frame CRC8 error!");
+        continue;
+      }
+
+      // crc8_ok 校验正确后读取数据段
       // 根据数据段长度读取数据
-      std::vector<uint8_t> data_buf(data_remain_length);  // len + csum
+      std::vector<uint8_t> data_buf(header_frame.len + 4);  // data_len + cmd_id + crc16
       int received_len = serial_driver_->port()->receive(data_buf);
       int received_len_sum = received_len;
       // 考虑到一次性读取数据可能存在数据量过大，读取不完整的情况。需要检测是否读取完整
       // 计算剩余未读取的数据长度
-      int remain_len = data_length - received_len - 1;
+      int remain_len = header_frame.len + 2 - received_len;
       while (remain_len > 0) {  // 读取剩余未读取的数据
         std::vector<uint8_t> remain_buf(remain_len);
         received_len = serial_driver_->port()->receive(remain_buf);
@@ -335,15 +392,107 @@ void StandardRobotPpRos2Node::receiveData()
       }
 
       // 数据段读取完成后添加 header_frame_buf 到 data_buf，得到完整数据包
-      data_buf.insert(data_buf.begin(), sof[0]);
+      data_buf.insert(data_buf.begin(), header_frame_buf.begin(), header_frame_buf.end());
 
-      bool checksum_ok = checksum::verify_check_sum(data_buf);
-      if (!checksum_ok && data_buf[63] != SOF_TAIL) {
-        RCLCPP_ERROR(get_logger(), "Check sum or tail_frame 0x%x error! ", data_buf[63]);
+      // 整包数据校验
+      bool crc16_ok = crc16::verify_CRC16_check_sum(data_buf);
+      if (!crc16_ok) {
+        RCLCPP_ERROR(get_logger(), "Data segment CRC16 error!");
+        continue;
       }
-
-      ReceiveTestData received_test_data = fromVector<ReceiveTestData>(data_buf);
-      processTestData(received_test_data);
+      
+      // crc16_ok 校验正确后根据 cmd_id 解析数据
+      uint16_t cmd_id = *reinterpret_cast<const uint16_t*>(&data_buf[5]);
+      switch (cmd_id) {
+        case ID_VISION_DATA: {
+          VisionDataPackage vision_data_package = fromVector<VisionDataPackage>(data_buf);
+          publishVisionData(vision_data_package);
+        } break;
+        case ID_GAME_STATUS: {
+          GameStatusPackage game_status_package = fromVector<GameStatusPackage>(data_buf);
+          publishGameStatus(game_status_package);
+        } break;
+        case ID_GAME_RESULT: {
+          GameResultPackage game_result_package = fromVector<GameResultPackage>(data_buf);
+          publishGameResult(game_result_package);
+        } break;
+        case ID_GAME_ROBOT_HP: {
+          GameRobotHpPackage game_robot_hp_package = fromVector<GameRobotHpPackage>(data_buf);
+          publishGameRobotHp(game_robot_hp_package);
+        } break;
+        case ID_EVENT_DATA: {
+          EventDataPackage event_data_package = fromVector<EventDataPackage>(data_buf);
+          publishEventData(event_data_package);
+        } break;
+        case ID_REFREE_WARNNING: {
+          RefreeWarnningPackage refree_warnning_package = fromVector<RefreeWarnningPackage>(data_buf);
+          publishRefreeWarnning(refree_warnning_package);
+        } break;
+        case ID_DART_INFO: {
+          DartInfoPackage dart_info_package = fromVector<DartInfoPackage>(data_buf);
+          publishDartInfo(dart_info_package);
+        } break;
+        case ID_ROBOT_STATUS: {
+          RobotStatusPackage robot_status_package = fromVector<RobotStatusPackage>(data_buf);
+          publishRobotStatus(robot_status_package);
+        } break;
+        case ID_POWER_HEAT_DATA: {
+          PowerHeatDataPackage power_heat_data_package = fromVector<PowerHeatDataPackage>(data_buf);
+          publishPowerHeatData(power_heat_data_package);
+        } break;
+        case ID_ROBOT_POS: {
+          RobotPosPackage robot_pos_package = fromVector<RobotPosPackage>(data_buf);
+          publishRobotPos(robot_pos_package);
+        } break;
+        case ID_BUFF: {
+          BuffPackage buff_package = fromVector<BuffPackage>(data_buf);
+          publishBuff(buff_package);
+        } break;
+        case ID_HURT_DATA: {
+          HurtDataPackage hurt_data_package = fromVector<HurtDataPackage>(data_buf);
+          publishHurtData(hurt_data_package);
+        } break;
+        case ID_SHOOT_DATA: {
+          ShootDataPackage shoot_data_package = fromVector<ShootDataPackage>(data_buf);
+          publishShootData(shoot_data_package);
+        } break;
+        case ID_PROJECTILE_ALLOWANCE: {
+          ProjectileAllowancePackage projectile_allowance_package = fromVector<ProjectileAllowancePackage>(data_buf);
+          publishProjectileAllowance(projectile_allowance_package);
+        } break;
+        case ID_RFID_STATUS: {
+          RfidStatusPackage rfid_status_package = fromVector<RfidStatusPackage>(data_buf);
+          publishRfidStatus(rfid_status_package);
+        } break;
+        case ID_DART_CLIENT_CMD: {
+          DartClientCmdPackage dart_client_cmd_package = fromVector<DartClientCmdPackage>(data_buf);
+          publishDartClientCmd(dart_client_cmd_package);
+        } break;
+        case ID_GROUND_ROBOT_POSITION: {
+          GroundRobotPositionPackage ground_robot_position_package =
+            fromVector<GroundRobotPositionPackage>(data_buf);
+          publishGroundRobotPosition(ground_robot_position_package);
+        } break;
+        case ID_LIDAR_MARK_DATA: {
+          LidarMarkDataPackage lidar_mark_data_package = fromVector<LidarMarkDataPackage>(data_buf);
+          publishLidarMarkData(lidar_mark_data_package);
+        } break;
+        case ID_SENTRY_INFO: {
+          SentryInfoPackage sentry_info_package = fromVector<SentryInfoPackage>(data_buf);
+          publishSentryInfo(sentry_info_package);
+        } break;
+        case ID_RADAR_INFO: {
+          RadarInfoPackage radar_info_package = fromVector<RadarInfoPackage>(data_buf);
+          publishRadarInfo(radar_info_package);
+        } break;
+        case ID_PID_DEBUG: {
+          PIDDebugPackage pid_debug_package = fromVector<PIDDebugPackage>(data_buf);
+          publishPIDDebug(pid_debug_package);
+        } break;
+        default: {
+          RCLCPP_WARN(get_logger(), "Invalid id: %d", cmd_id);
+        } break;
+      }
     } catch (const std::exception & ex) {
       RCLCPP_ERROR(get_logger(), "Error receiving data: %s", ex.what());
       is_usb_ok_ = false;
@@ -351,18 +500,206 @@ void StandardRobotPpRos2Node::receiveData()
   }
 }
 
-void StandardRobotPpRos2Node::processTestData(ReceiveTestData & received_test_data)
+void StandardRobotPpRos2Node::publishGameStatus(const GameStatusPackage& pkg)
+{
+  combat_rm_interfaces::msg::GameStatus msg;
+
+  msg.game_progress = pkg.data.game_progress;
+  msg.stage_remain_time = pkg.data.stage_remain_time;
+  msg.sync_time_stamp = pkg.data.sync_time_stamp;
+
+  game_status_pub_->publish(msg);
+}
+
+void StandardRobotPpRos2Node::publishGameResult(const GameResultPackage& pkg)
+{
+    // Function content reserved for user implementation
+    return;
+}
+
+void StandardRobotPpRos2Node::publishGameRobotHp(const GameRobotHpPackage& pkg)
+{
+  combat_rm_interfaces::msg::GameRobotHp msg;
+
+  msg.ally_1_robot_hp = pkg.data.ally_1_robot_hp;
+  msg.ally_2_robot_hp = pkg.data.ally_2_robot_hp;
+  msg.ally_3_robot_hp = pkg.data.ally_3_robot_hp;
+  msg.ally_4_robot_hp = pkg.data.ally_4_robot_hp;
+  msg.ally_outpost_hp = pkg.data.ally_outpost_hp;
+  msg.ally_base_hp = pkg.data.ally_base_hp;
+
+  game_robot_hp_pub_->publish(msg);
+}
+
+void StandardRobotPpRos2Node::publishEventData(const EventDataPackage& pkg)
+{
+  combat_rm_interfaces::msg::EventData msg;
+
+  msg.ally_supply_zone_non_exchange = pkg.data.ally_supply_zone_non_exchange;
+  msg.ally_supply_zone_exchange     = pkg.data.ally_supply_zone_exchange;
+  msg.ally_supply_zone              = pkg.data.ally_supply_zone;
+  msg.ally_small_power_rune         = pkg.data.ally_small_power_rune;
+  msg.ally_big_power_rune           = pkg.data.ally_big_power_rune;
+  msg.central_highland              = pkg.data.central_highland;
+  msg.trapezoidal_highland          = pkg.data.trapezoidal_highland;
+  msg.center_gain_point              = pkg.data.center_gain_point;
+  msg.ally_fortress_gain_point      = pkg.data.ally_fortress_gain_point;
+  msg.ally_outpost_gain_point       = pkg.data.ally_outpost_gain_point;
+  msg.base_gain_point               = pkg.data.base_gain_point;
+
+  event_data_pub_->publish(msg);
+}
+
+void StandardRobotPpRos2Node::publishRefreeWarnning(const RefreeWarnningPackage& pkg)
+{
+  // Function content reserved for user implementation
+  return;
+}
+
+void StandardRobotPpRos2Node::publishDartInfo(const DartInfoPackage& pkg)
+{
+  // Function content reserved for user implementation
+  return;
+}
+
+void StandardRobotPpRos2Node::publishRobotStatus(const RobotStatusPackage& pkg)
+{
+  combat_rm_interfaces::msg::RobotStatus msg;
+
+  msg.current_hp = pkg.data.current_hp;
+  msg.maximum_hp = pkg.data.maximum_hp;
+
+  robot_status_pub_->publish(msg);
+}
+
+void StandardRobotPpRos2Node::publishPowerHeatData(const PowerHeatDataPackage& pkg)
+{
+    // Function content reserved for user implementation
+    return;
+}
+
+void StandardRobotPpRos2Node::publishRobotPos(const RobotPosPackage& pkg)
+{
+  combat_rm_interfaces::msg::RobotPos msg;
+
+  msg.x = pkg.data.x;
+  msg.y = pkg.data.y;
+  msg.angle = pkg.data.angle;
+
+  robot_pos_pub_->publish(msg);
+}
+
+void StandardRobotPpRos2Node::publishBuff(const BuffPackage& pkg)
+{
+  combat_rm_interfaces::msg::Buff msg;
+
+  msg.recovery_buff = pkg.data.recovery_buff;
+  msg.cooling_buff = pkg.data.cooling_buff;
+  msg.defence_buff = pkg.data.defence_buff;
+  msg.vulnerability_buff = pkg.data.vulnerability_buff;
+  msg.attack_buff = pkg.data.attack_buff;
+  msg.remaining_energy = pkg.data.remaining_energy;
+
+  buff_pub_->publish(msg);
+}
+
+void StandardRobotPpRos2Node::publishHurtData(const HurtDataPackage& pkg)
+{
+    combat_rm_interfaces::msg::HurtData msg;
+    
+    msg.armor_id = pkg.data.armor_id;
+    msg.hp_deduction_reason = pkg.data.hp_deduction_reason;
+
+    hurt_data_pub_->publish(msg);
+}
+
+void StandardRobotPpRos2Node::publishShootData(const ShootDataPackage& pkg)
+{
+    // Function content reserved for user implementation
+    return;
+}
+
+void StandardRobotPpRos2Node::publishProjectileAllowance(const ProjectileAllowancePackage& pkg)
+{
+    // Function content reserved for user implementation
+    return;
+}
+
+void StandardRobotPpRos2Node::publishRfidStatus(const RfidStatusPackage& pkg)
+{
+  combat_rm_interfaces::msg::RfidStatus msg;
+
+  msg.ally_base_gain_point = pkg.data.ally_base_gain_point;
+  msg.ally_central_highland_gain_point = pkg.data.ally_central_highland_gain_point;
+  msg.enemy_central_highland_gain_point = pkg.data.enemy_central_highland_gain_point;
+  msg.ally_fortress_gain_point = pkg.data.ally_fortress_gain_point;
+  msg.ally_outpost_gain_point = pkg.data.ally_outpost_gain_point;
+  msg.ally_supply_point_non_exchange = pkg.data.ally_supply_point_non_exchange;
+  msg.ally_supply_point_exchange = pkg.data.ally_supply_point_exchange;
+  msg.center_gain_point = pkg.data.center_gain_point;
+  msg.enemy_fortress_gain_point = pkg.data.enemy_fortress_gain_point;
+  msg.enemy_outpost_gain_point = pkg.data.enemy_outpost_gain_point;
+
+  rfid_status_pub_->publish(msg);
+}
+
+void StandardRobotPpRos2Node::publishDartClientCmd(const DartClientCmdPackage& pkg)
+{
+    // Function content reserved for user implementation
+    return;
+}
+
+void StandardRobotPpRos2Node::publishGroundRobotPosition(const GroundRobotPositionPackage& pkg)
+{
+  combat_rm_interfaces::msg::GroundRobotPosition msg;
+
+  msg.hero_position.x = pkg.data.hero_x;
+  msg.hero_position.y = pkg.data.hero_y;
+  msg.engineer_position.x = pkg.data.engineer_x;
+  msg.engineer_position.y = pkg.data.engineer_y;
+  msg.infantry_3_position.x = pkg.data.standard_3_x;
+  msg.infantry_3_position.y = pkg.data.standard_3_y;
+  msg.infantry_4_position.x = pkg.data.standard_4_x;
+  msg.infantry_4_position.y = pkg.data.standard_4_y;
+
+  ground_robot_position_pub_->publish(msg);
+}
+
+void StandardRobotPpRos2Node::publishLidarMarkData(const LidarMarkDataPackage& pkg)
+{
+    // Function content reserved for user implementation
+    return;
+}
+
+void StandardRobotPpRos2Node::publishSentryInfo(const SentryInfoPackage& pkg)
+{
+  combat_rm_interfaces::msg::SentryInfo msg;
+
+  msg.disengaged_state = pkg.data.disengaged_state;
+  msg.current_state = pkg.data.current_state;
+  msg.ally_power_rune_state = pkg.data.ally_power_rune_state;
+
+  sentry_info_pub_->publish(msg);
+}
+
+void StandardRobotPpRos2Node::publishRadarInfo(const RadarInfoPackage& pkg)
+{
+    // Function content reserved for user implementation
+    return;
+}
+
+void StandardRobotPpRos2Node::publishVisionData(const VisionDataPackage& pkg)
 {
   // 发布 serial_receive_data
   rm_interfaces::msg::SerialReceiveData serial_receive_data;
   serial_receive_data.header.stamp = this->now() + rclcpp::Duration::from_seconds(timestamp_offset_);
   serial_receive_data.header.frame_id = vision_target_frame_;
-  serial_receive_data.mode = received_test_data.data.enemy_color == 2 ? 1 : 0;
-  serial_receive_data.bullet_speed = received_test_data.data.bullet_speed;
+  serial_receive_data.mode = pkg.data.enemy_color == 2 ? 1 : 0;
+  serial_receive_data.bullet_speed = pkg.data.bullet_speed;
   serial_receive_data.roll = 0.0;
-  serial_receive_data.pitch = received_test_data.data.pitch;
-  serial_receive_data.yaw = received_test_data.data.yaw;
-  serial_receive_data_pub_->publish(serial_receive_data);
+  serial_receive_data.pitch = pkg.data.pitch;
+  serial_receive_data.yaw = pkg.data.yaw;
+  vision_data_pub_->publish(serial_receive_data);
 
   for (auto & [service_name, client] : set_mode_clients_) {
     if (client.mode.load() != serial_receive_data.mode && !client.on_waiting.load()) {
@@ -376,8 +713,8 @@ void StandardRobotPpRos2Node::processTestData(ReceiveTestData & received_test_da
   t.header.frame_id = vision_target_frame_;
   t.child_frame_id = "gimbal_link";
   auto roll = 0.0;
-  auto pitch = -received_test_data.data.pitch;
-  auto yaw = received_test_data.data.yaw;
+  auto pitch = -pkg.data.pitch;
+  auto yaw = pkg.data.yaw;
   tf2::Quaternion q;
   q.setRPY(roll, pitch, yaw);
   t.transform.rotation = tf2::toMsg(q);
@@ -394,11 +731,9 @@ void StandardRobotPpRos2Node::processTestData(ReceiveTestData & received_test_da
   // base yaw to odom_vision
   t.header.frame_id = "base_yaw_odom";
   t.child_frame_id = "odom_vision";
-  tf2::Quaternion q1, q2, q3, q_total;
+  tf2::Quaternion q1, q2;
   q1.setRPY(0.0, 0.0, yaw);
   q2.setRPY(0.0, pitch, 0.0);
-  q3.setRPY(0.0, -pitch, -yaw);
-  q_total = q1 * q2 * q3;
   tf2::Vector3 trans1(0.0, 0.0, 0.193);
   tf2::Vector3 trans2(0.0, 0.0, 0.11035);
   tf2::Vector3 trans3(0.078, 0.0, 0.0);
@@ -406,49 +741,13 @@ void StandardRobotPpRos2Node::processTestData(ReceiveTestData & received_test_da
                           (tf2::quatRotate(q1, trans2)) + 
                           (tf2::quatRotate(q1 * q2, trans3));
   t.transform.translation = tf2::toMsg(trans_total);
-  t.transform.rotation = tf2::toMsg(q_total);
   tf_broadcaster_->sendTransform(t);
+}
 
-  // 发布 robot_status
-  pb_rm_interfaces::msg::RobotStatus robot_status_msg;
-  robot_status_msg.robot_id = 7;
-  robot_status_msg.robot_level = received_test_data.data.robot_level;
-  robot_status_msg.current_hp = received_test_data.data.current_hp;
-  robot_status_msg.maximum_hp = received_test_data.data.maximum_hp;
-  robot_status_msg.armor_id = received_test_data.data.armor_id;
-  robot_status_msg.hp_deduction_reason = received_test_data.data.hp_deduction_reason;
-  robot_status_pub_->publish(robot_status_msg);
-
-  // 发布 game_status
-  pb_rm_interfaces::msg::GameStatus game_status_msg;
-  game_status_msg.game_progress = received_test_data.data.game_progress;
-  game_status_msg.stage_remain_time = received_test_data.data.stage_remain_time;
-  game_status_pub_->publish(game_status_msg);
-
-  // 发布 rfid_status
-  pb_rm_interfaces::msg::RfidStatus rfid_status_msg;
-  rfid_status_msg.base_gain_point = received_test_data.data.rfid_status != 0;
-  rfid_status_msg.ally_central_highland_gain_point = (received_test_data.data.rfid_status & 1) != 0;
-  rfid_status_msg.enemy_central_highland_gain_point = (received_test_data.data.rfid_status & (1 << 2)) != 0;
-  rfid_status_msg.ally_fortress_gain_point = (received_test_data.data.rfid_status & (1 << 17)) != 0;
-  rfid_status_msg.ally_outpost_gain_point = (received_test_data.data.rfid_status & (1 << 18)) != 0;
-  rfid_status_msg.ally_supply_zone_non_exchange = (received_test_data.data.rfid_status & (1 << 19)) != 0;
-  rfid_status_msg.ally_supply_zone_exchange = (received_test_data.data.rfid_status & (1 << 20)) != 0;
-  rfid_status_msg.ally_assemble_island = (received_test_data.data.rfid_status & (1 << 21)) != 0;
-  rfid_status_msg.enemy_assemble_island = (received_test_data.data.rfid_status & (1 << 22)) != 0;
-  rfid_status_msg.center_gain_point = (received_test_data.data.rfid_status & (1 << 23)) != 0;
-  rfid_status_msg.enemy_fortress_gain_point = (received_test_data.data.rfid_status & (1 << 24)) != 0;
-  rfid_status_msg.enemy_outpost_gain_point = (received_test_data.data.rfid_status & (1 << 25)) != 0;
-  uint32_t valid_bits = received_test_data.data.rfid_status & 0xFFFFFFFF;
-  int set_bits_count = std::bitset<32>(valid_bits).count();
-  if (set_bits_count == 1 || set_bits_count == 0) {
-    rfid_status_pub_->publish(rfid_status_msg);
-  }
-  else {
-    RCLCPP_WARN(get_logger(), "RFID status has multiple bits set, not publishing! The RFID Status = %x",
-      received_test_data.data.rfid_status);
+void StandardRobotPpRos2Node::publishPIDDebug(const PIDDebugPackage& pkg)
+{
+    // Function content reserved for user implementation
     return;
-  }
 }
 
 /********************************************************/
@@ -495,7 +794,7 @@ void StandardRobotPpRos2Node::sendData()
   }
 }
 
-void StandardRobotPpRos2Node::NavCmdCallback(const pb_rm_interfaces::msg::NavigationCmd::SharedPtr msg)
+void StandardRobotPpRos2Node::NavCmdCallback(const combat_rm_interfaces::msg::NavigationCmd::SharedPtr msg)
 {
   send_test_data_.data.vx = msg->twist.linear.x * nav_k_;
   send_test_data_.data.vy = msg->twist.linear.y * nav_k_;
