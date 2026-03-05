@@ -358,7 +358,7 @@ void StandardRobotPpRos2Node::receiveData()
         is_checksum = false;
       }else if (sof[0] != SOF_REFREE_HEAD && sof[0] != SOF_VISION_HEAD) {
         sof_err_count++;
-        RCLCPP_INFO(get_logger(), "Finding sof, cnt=%d", sof_err_count);
+        // RCLCPP_INFO(get_logger(), "Finding sof, cnt=%d", sof_err_count);
         continue;
       }
 
