@@ -763,6 +763,7 @@ void StandardRobotPpRos2Node::publishVisionData(const VisionDataPackage& pkg)
                           (tf2::quatRotate(q1, trans2)) + 
                           (tf2::quatRotate(q1 * q2, trans3));
   t.transform.translation = tf2::toMsg(trans_total);
+  t.transform.rotation = tf2::toMsg(q.getIdentity());
   tf_broadcaster_->sendTransform(t);
 }
 
