@@ -156,6 +156,7 @@ void StandardRobotPpRos2Node::getParams()
 
   try {
     nav_k_ = declare_parameter<float>("nav_k", 1.0);
+    nav_k_ = this->get_parameter("nav_k").as_float();
   } catch (rclcpp::ParameterTypeException & ex) {
     RCLCPP_ERROR(get_logger(), "The nav k provided was invalid");
     throw ex;
@@ -263,23 +264,47 @@ void StandardRobotPpRos2Node::serialPortProtect()
       // 1. check if serial driver and port are valid and open
       if (!serial_driver_ || !serial_driver_->port() || !serial_driver_->port()->is_open()) {
         RCLCPP_WARN(get_logger(), "Serial port is not open, try to reconnect...");
-        
-        // reinit serial driver and port
-        if (serial_driver_) {
-          serial_driver_->init_port(device_name_, *device_config_);
+
+        bool found_port = false;
+        std::string base_port = device_name_;
+        size_t last_non_digit = base_path.find_last_not_of("0123456789");
+        if (last_non_digit != std::string::npos && last_non_digit + 1 < base_path.size()) {
+            base_path = base_path.substr(0, last_non_digit + 1);  // 去掉末尾数字
         }
-        
-        // try to open the port
-        if (serial_driver_->port() && !serial_driver_->port()->is_open()) {
-          serial_driver_->port()->open();
+        for (int i = 0; i < 10; ++i) {
+          std::string candidate = base_path + std::to_string(i);
+          if (std::filesystem::exists(candidate)) {
+              // 找到设备
+              RCLCPP_INFO(get_logger(), "Serial File %s found!", candidate.c_str());
+              device_name_ = candidate;
+              found_port = true;
+              break;
+          }
+        } else {
+            RCLCPP_WARN(get_logger(), "Serial File %s not found! Trying next...", candidate.c_str());
         }
 
-        // check if the port is open
-        if (serial_driver_->port()->is_open()) {
-          RCLCPP_INFO(get_logger(), "Serial port %s opened successfully!", device_name_.c_str());
-          is_usb_ok_ = true;
-        } else {
-          RCLCPP_ERROR(get_logger(), "Serial port %s open failed (port is null or open failed)", device_name_.c_str());
+        if (found_port) {
+          // reinit serial driver and port
+          if (serial_driver_) {
+            serial_driver_->init_port(device_name_, *device_config_);
+          }
+          
+          // try to open the port
+          if (serial_driver_->port() && !serial_driver_->port()->is_open()) {
+            serial_driver_->port()->open();
+          }
+
+          // check if the port is open
+          if (serial_driver_->port()->is_open()) {
+            RCLCPP_INFO(get_logger(), "Serial port %s opened successfully!", device_name_.c_str());
+            is_usb_ok_ = true;
+          } else {
+            RCLCPP_ERROR(get_logger(), "Serial port %s open failed (port is null or open failed)", device_name_.c_str());
+            is_usb_ok_ = false;
+          }
+        }else {
+          RCLCPP_ERROR(get_logger(), "No serial port found in range 0-9 with base %s", device_name_.c_str(), current_port.c_str());
           is_usb_ok_ = false;
         }
       } 
@@ -301,6 +326,7 @@ void StandardRobotPpRos2Node::serialPortProtect()
         }
       } catch (const std::exception & close_ex) {
         RCLCPP_ERROR(get_logger(), "Failed to close serial port: %s", close_ex.what());
+        serial_driver_.reset();
       }
     }
 
