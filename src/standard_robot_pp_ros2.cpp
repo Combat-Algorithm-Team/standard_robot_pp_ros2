@@ -358,7 +358,7 @@ void StandardRobotPpRos2Node::receiveData()
   std::vector<uint8_t> sof(1);
 
   int time_waiting = 0;
-  int sof_err_count = 0;
+  // int sof_err_count = 0;
   bool is_checksum = false;
 
   while (rclcpp::ok()) {
@@ -370,12 +370,12 @@ void StandardRobotPpRos2Node::receiveData()
     }
 
     try {
-      if (sof_err_count >= MAX_PACKAGE_LEN) {
-        RCLCPP_WARN(get_logger(), "Receive: SOF error count over 64! SOF_HEAD not found. Data receive fail.");
-        RCLCPP_WARN(get_logger(), "Set usb is not ok!");
-        is_usb_ok_ = false;
-        sof_err_count = 0;
-      }
+      // if (sof_err_count >= MAX_PACKAGE_LEN) {
+      //   RCLCPP_WARN(get_logger(), "Receive: SOF error count over 64! SOF_HEAD not found. Data receive fail.");
+      //   RCLCPP_WARN(get_logger(), "Set usb is not ok!");
+      //   is_usb_ok_ = false;
+      //   sof_err_count = 0;
+      // }
 
       serial_driver_->port()->receive(sof);
       is_checksum = true;
@@ -383,13 +383,13 @@ void StandardRobotPpRos2Node::receiveData()
       if (sof[0] == SOF_REFREE_HEAD) {
         is_checksum = false;
       }else if (sof[0] != SOF_REFREE_HEAD && sof[0] != SOF_VISION_HEAD) {
-        sof_err_count++;
+        // sof_err_count++;
         // RCLCPP_INFO(get_logger(), "Finding sof, cnt=%d", sof_err_count);
         continue;
       }
 
       // Reset sof_count when SOF_HEAD is found
-      sof_err_count = 0;
+      // sof_err_count = 0;
 
       // sof[0] == SOF_HEAD 后读取剩余 header_frame 内容
       std::vector<uint8_t> header_frame_buf(4);
