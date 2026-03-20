@@ -32,7 +32,7 @@ const uint16_t ID_GAME_RESULT = 0x0002;
 const uint16_t ID_GAME_ROBOT_HP = 0x0003;
 const uint16_t ID_EVENT_DATA = 0x0101;
 const uint16_t ID_REFREE_WARNNING = 0x0104;
-const uint16_t ID_DART_INFO =0x0105;
+const uint16_t ID_DART_INFO = 0x0105;
 const uint16_t ID_ROBOT_STATUS = 0x0201;
 const uint16_t ID_POWER_HEAT_DATA = 0x0202;
 const uint16_t ID_ROBOT_POS = 0x0203;
@@ -97,10 +97,8 @@ struct GameStatusPackage
 
   struct
   {
-    uint8_t game_type : 4;
-    uint8_t game_progress : 4;
+    uint8_t game_progress;
     uint16_t stage_remain_time;
-    uint64_t sync_time_stamp;
   } __attribute__((packed)) data;
 
   uint16_t crc16;
@@ -207,16 +205,8 @@ struct RobotStatusPackage
 
   struct
   {
-    uint8_t robot_id;
-    uint8_t robot_level;
     uint16_t current_hp;
     uint16_t maximum_hp;
-    uint16_t shooter_barrel_cooling_value;
-    uint16_t shooter_barrel_heat_limit;
-    uint16_t chassis_power_limit;
-    uint8_t power_management_gimbal_output : 1;
-    uint8_t power_management_chassis_output : 1;
-    uint8_t power_management_shooter_output : 1;
   } __attribute__((packed)) data;
 
   uint16_t crc16;
@@ -233,7 +223,7 @@ struct PowerHeatDataPackage
     uint32_t reserve[2];
     uint16_t buffer_energy;
     uint16_t shooter_17mm_barrel_heat;
-    uint16_t shooter_42mm_barrel_heat; 
+    uint16_t shooter_42mm_barrel_heat;
   } __attribute__((packed)) data;
 
   uint16_t crc16;
@@ -249,7 +239,7 @@ struct RobotPosPackage
   {
     float x;
     float y;
-    float angle;  
+    float angle;
   } __attribute__((packed)) data;
 
   uint16_t crc16;
@@ -268,7 +258,7 @@ struct BuffPackage
     uint8_t defence_buff;
     uint8_t vulnerability_buff;
     uint16_t attack_buff;
-    uint8_t remaining_energy; 
+    uint8_t remaining_energy;
   } __attribute__((packed)) data;
 
   uint16_t crc16;
@@ -282,8 +272,8 @@ struct HurtDataPackage
 
   struct
   {
-    uint8_t armor_id : 4;
-    uint8_t hp_deduction_reason : 4; 
+    uint8_t armor_id;
+    uint8_t hp_deduction_reason;
   } __attribute__((packed)) data;
 
   uint16_t crc16;
@@ -317,7 +307,7 @@ struct ProjectileAllowancePackage
     uint16_t projectile_allowance_17mm;
     uint16_t projectile_allowance_42mm;
     uint16_t remaining_gold_coin;
-    uint16_t projectile_allowance_fortress; 
+    uint16_t projectile_allowance_fortress;
   } __attribute__((packed)) data;
 
   uint16_t crc16;
@@ -344,10 +334,9 @@ struct RfidStatusPackage
     uint32_t enemy_fortress_gain_point : 1;
     uint32_t enemy_outpost_gain_point : 1;
     uint32_t reserved3 : 6;
-
-    uint8_t reserve4;
   } __attribute__((packed)) data;
 
+  uint8_t reserve4;
   uint16_t crc16;
 } __attribute__((packed));
 
@@ -473,6 +462,44 @@ struct PIDDebugPackage
   uint16_t crc16;
 } __attribute__((packed));
 
+struct ReceiveDataPackage
+{
+  HeaderFrame frame_header;
+  uint16_t cmd_id;
+
+  struct
+  {
+    struct VisionDataPackage::data vision_data;
+    struct GameStatusPackage::data game_status_data;
+    struct EventDataPackage::data event_data;
+    struct RobotStatusPackage::data robot_status_data;
+    struct HurtDataPackage::data hurt_data;
+    struct RfidStatusPackage::data rfid_data;
+
+  } __attribute__((packed)) data;
+
+  uint16_t check_sum;
+} __attribute__((packed));
+
+// struct ReceiveDataPackage
+// {
+//   HeaderFrame frame_header;
+//   uint16_t cmd_id;
+
+//   struct
+//   {
+//     VisionDataPackage.data vision_data;
+//     GameStatusPackage.data game_status_data;
+//     EventDataPackage.data event_data;
+//     RobotStatusPackage.data robot_status_data;
+//     HurtDataPackage.data hurt_data;
+//     RfidStatusPackage.data rfid_data;
+
+//   } __attribute__((packed)) data;
+
+//   uint16_t check_sum;
+// } __attribute__((packed));
+
 /********************************************************/
 /* Send data                                            */
 /********************************************************/
@@ -492,7 +519,7 @@ struct NavigationCmd
       float wz;
     } __attribute__((packed)) chassis_vector;
 
-    struct 
+    struct
     {
       uint8_t chassis_spinning;
       uint8_t is_navigating;
@@ -510,7 +537,6 @@ struct VisionCmd
 
   struct
   {
-    
     struct
     {
       float pitch;
@@ -524,7 +550,7 @@ struct VisionCmd
       uint32_t nanosec;
     } __attribute__((packed)) time_stamp;
 
-    struct 
+    struct
     {
       uint8_t fire_advice;
       uint8_t reserve2;
@@ -542,7 +568,7 @@ struct SendTestData
 
   struct
   {
-    uint8_t fire_advice; // 0:不开火 1:开火
+    uint8_t fire_advice;  // 0:不开火 1:开火
     uint8_t major_number;
     uint8_t chassis_status;
     float pitch;
