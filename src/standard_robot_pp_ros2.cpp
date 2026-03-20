@@ -165,7 +165,7 @@ void StandardRobotPpRos2Node::getParams()
 
   try {
     nav_k_ = declare_parameter<float>("nav_k", 1.0);
-    nav_k_ = this->get_parameter("nav_k").as_float();
+    nav_k_ = this->get_parameter("nav_k").as_double();
   } catch (rclcpp::ParameterTypeException & ex) {
     RCLCPP_ERROR(get_logger(), "The nav k provided was invalid");
     throw ex;
@@ -280,25 +280,25 @@ void StandardRobotPpRos2Node::serialPortProtect()
         RCLCPP_WARN(get_logger(), "Serial port is not open, try to reconnect...");
 
         bool found_port = false;
-        std::string base_port = device_name_;
+        std::string base_path = device_name_;
         size_t last_non_digit = base_path.find_last_not_of("0123456789");
         if (last_non_digit != std::string::npos && last_non_digit + 1 < base_path.size()) {
           base_path = base_path.substr(0, last_non_digit + 1);  // 去掉末尾数字
         }
         for (int i = 0; i < 10; ++i) {
           std::string candidate = base_path + std::to_string(i);
-          if (std::filesystem::exists(candidate)) {
+          if (rcpputils::fs::exists(candidate)) {
             // 找到设备
             RCLCPP_INFO(get_logger(), "Serial File %s found!", candidate.c_str());
             device_name_ = candidate;
             found_port = true;
             break;
+          } else
+          {
+            RCLCPP_WARN(get_logger(), "Serial File %s not found! Trying next...", candidate.c_str());
           }
         }
-        else
-        {
-          RCLCPP_WARN(get_logger(), "Serial File %s not found! Trying next...", candidate.c_str());
-        }
+        
 
         if (found_port) {
           // reinit serial driver and port
@@ -323,8 +323,7 @@ void StandardRobotPpRos2Node::serialPortProtect()
           }
         } else {
           RCLCPP_ERROR(
-            get_logger(), "No serial port found in range 0-9 with base %s", device_name_.c_str(),
-            current_port.c_str());
+            get_logger(), "No serial port found in range 0-9 with base %s", base_path.c_str());
           is_usb_ok_ = false;
         }
       }
@@ -377,8 +376,6 @@ void StandardRobotPpRos2Node::receiveData()
   std::vector<uint8_t> sof(1);
 
   int time_waiting = 0;
-  // int sof_err_count = 0;
-  bool is_checksum = false;
 
   while (rclcpp::ok()) {
     // 串口状态
@@ -417,7 +414,7 @@ void StandardRobotPpRos2Node::receiveData()
       int received_len_sum = received_len;
       // 考虑到一次性读取数据可能存在数据量过大，读取不完整的情况。需要检测是否读取完整
       // 计算剩余未读取的数据长度
-      int remain_len = header_frame.len + 2 - received_len;
+      int remain_len = header_frame.len + 4 - received_len;
       while (remain_len > 0) {  // 读取剩余未读取的数据
         std::vector<uint8_t> remain_buf(remain_len);
         received_len = serial_driver_->port()->receive(remain_buf);
@@ -438,7 +435,12 @@ void StandardRobotPpRos2Node::receiveData()
 
       ReceiveDataPackage receive_data_package = fromVector<ReceiveDataPackage>(data_buf);
 
-      // TODO
+      publishVisionData(receive_data_package.data.vision_data);
+      publishGameStatus(receive_data_package.data.game_status_data);
+      publishEventData(receive_data_package.data.event_data);
+      publishRobotStatus(receive_data_package.data.robot_status_data);
+      publishHurtData(receive_data_package.data.hurt_data);
+      publishRfidStatus(receive_data_package.data.rfid_data);
 
     } catch (const std::exception & ex) {
       RCLCPP_ERROR(get_logger(), "Error receiving data: %s", ex.what());
@@ -447,86 +449,85 @@ void StandardRobotPpRos2Node::receiveData()
   }
 }
 
-void StandardRobotPpRos2Node::publishGameStatus(const GameStatusPackage & pkg)
+void StandardRobotPpRos2Node::publishGameStatus(const GameStatusPackage::data & pkg)
 {
   combat_rm_interfaces::msg::GameStatus msg;
 
-  msg.game_progress = pkg.data.game_progress;
-  msg.stage_remain_time = pkg.data.stage_remain_time;
-  msg.sync_time_stamp = pkg.data.sync_time_stamp;
+  msg.game_progress = pkg.game_progress;
+  msg.stage_remain_time = pkg.stage_remain_time;
 
   game_status_pub_->publish(msg);
 }
 
-void StandardRobotPpRos2Node::publishEventData(const EventDataPackage & pkg)
+void StandardRobotPpRos2Node::publishEventData(const EventDataPackage::data & pkg)
 {
   combat_rm_interfaces::msg::EventData msg;
 
-  msg.ally_supply_zone_non_exchange = pkg.data.ally_supply_zone_non_exchange;
-  msg.ally_supply_zone_exchange = pkg.data.ally_supply_zone_exchange;
-  msg.ally_supply_zone = pkg.data.ally_supply_zone;
-  msg.ally_small_power_rune = pkg.data.ally_small_power_rune;
-  msg.ally_big_power_rune = pkg.data.ally_big_power_rune;
-  msg.central_highland = pkg.data.central_highland;
-  msg.trapezoidal_highland = pkg.data.trapezoidal_highland;
-  msg.center_gain_point = pkg.data.center_gain_point;
-  msg.ally_fortress_gain_point = pkg.data.ally_fortress_gain_point;
-  msg.ally_outpost_gain_point = pkg.data.ally_outpost_gain_point;
-  msg.base_gain_point = pkg.data.base_gain_point;
+  msg.ally_supply_zone_non_exchange = pkg.ally_supply_zone_non_exchange;
+  msg.ally_supply_zone_exchange = pkg.ally_supply_zone_exchange;
+  msg.ally_supply_zone = pkg.ally_supply_zone;
+  msg.ally_small_power_rune = pkg.ally_small_power_rune;
+  msg.ally_big_power_rune = pkg.ally_big_power_rune;
+  msg.central_highland = pkg.central_highland;
+  msg.trapezoidal_highland = pkg.trapezoidal_highland;
+  msg.center_gain_point = pkg.center_gain_point;
+  msg.ally_fortress_gain_point = pkg.ally_fortress_gain_point;
+  msg.ally_outpost_gain_point = pkg.ally_outpost_gain_point;
+  msg.base_gain_point = pkg.base_gain_point;
 
   event_data_pub_->publish(msg);
 }
 
-void StandardRobotPpRos2Node::publishRobotStatus(const RobotStatusPackage & pkg)
+void StandardRobotPpRos2Node::publishRobotStatus(const RobotStatusPackage::data & pkg)
 {
   combat_rm_interfaces::msg::RobotStatus msg;
 
-  msg.current_hp = pkg.data.current_hp;
-  msg.maximum_hp = pkg.data.maximum_hp;
+  msg.current_hp = pkg.current_hp;
+  msg.maximum_hp = pkg.maximum_hp;
 
   robot_status_pub_->publish(msg);
 }
 
-void StandardRobotPpRos2Node::publishHurtData(const HurtDataPackage & pkg)
+void StandardRobotPpRos2Node::publishHurtData(const HurtDataPackage::data & pkg)
 {
   combat_rm_interfaces::msg::HurtData msg;
 
-  msg.armor_id = pkg.data.armor_id;
-  msg.hp_deduction_reason = pkg.data.hp_deduction_reason;
+  msg.armor_id = pkg.armor_id;
+  msg.hp_deduction_reason = pkg.hp_deduction_reason;
 
   hurt_data_pub_->publish(msg);
 }
 
-void StandardRobotPpRos2Node::publishRfidStatus(const RfidStatusPackage & pkg)
+void StandardRobotPpRos2Node::publishRfidStatus(const RfidStatusPackage::data & pkg)
 {
   combat_rm_interfaces::msg::RfidStatus msg;
 
-  msg.ally_base_gain_point = pkg.data.ally_base_gain_point;
-  msg.ally_central_highland_gain_point = pkg.data.ally_central_highland_gain_point;
-  msg.enemy_central_highland_gain_point = pkg.data.enemy_central_highland_gain_point;
-  msg.ally_fortress_gain_point = pkg.data.ally_fortress_gain_point;
-  msg.ally_outpost_gain_point = pkg.data.ally_outpost_gain_point;
-  msg.ally_supply_point_non_exchange = pkg.data.ally_supply_point_non_exchange;
-  msg.ally_supply_point_exchange = pkg.data.ally_supply_point_exchange;
-  msg.center_gain_point = pkg.data.center_gain_point;
-  msg.enemy_fortress_gain_point = pkg.data.enemy_fortress_gain_point;
-  msg.enemy_outpost_gain_point = pkg.data.enemy_outpost_gain_point;
+  msg.ally_base_gain_point = pkg.ally_base_gain_point;
+  msg.ally_central_highland_gain_point = pkg.ally_central_highland_gain_point;
+  msg.enemy_central_highland_gain_point = pkg.enemy_central_highland_gain_point;
+  msg.ally_fortress_gain_point = pkg.ally_fortress_gain_point;
+  msg.ally_outpost_gain_point = pkg.ally_outpost_gain_point;
+  msg.ally_supply_point_non_exchange = pkg.ally_supply_point_non_exchange;
+  msg.ally_supply_point_exchange = pkg.ally_supply_point_exchange;
+  msg.center_gain_point = pkg.center_gain_point;
+  msg.enemy_fortress_gain_point = pkg.enemy_fortress_gain_point;
+  msg.enemy_outpost_gain_point = pkg.enemy_outpost_gain_point;
 
   rfid_status_pub_->publish(msg);
 }
 
-void StandardRobotPpRos2Node::publishVisionData(const VisionDataPackage & pkg)
+void StandardRobotPpRos2Node::publishVisionData(const VisionDataPackage::data & pkg)
 {
   // 发布 serial_receive_data
   rm_interfaces::msg::SerialReceiveData serial_receive_data;
   serial_receive_data.header.stamp =
     this->now() + rclcpp::Duration::from_seconds(timestamp_offset_);
   serial_receive_data.header.frame_id = vision_target_frame_;
-  serial_receive_data.mode = pkg.data.enemy_color == 2 ? 1 : 0;
-  serial_receive_data.bullet_speed = pkg.data.bullet_speed;
+  serial_receive_data.mode = pkg.enemy_color == 2 ? 1 : 0;
+  serial_receive_data.bullet_speed = pkg.bullet_speed;
   serial_receive_data.roll = 0.0;
-  serial_receive_data.pitch = pkg.data.pitch;
-  serial_receive_data.yaw = pkg.data.yaw;
+  serial_receive_data.pitch = pkg.pitch;
+  serial_receive_data.yaw = pkg.yaw;
   vision_data_pub_->publish(serial_receive_data);
 
   for (auto & [service_name, client] : set_mode_clients_) {
@@ -541,8 +542,8 @@ void StandardRobotPpRos2Node::publishVisionData(const VisionDataPackage & pkg)
   t.header.frame_id = vision_target_frame_;
   t.child_frame_id = "gimbal_link";
   auto roll = 0.0;
-  auto pitch = -pkg.data.pitch;
-  auto yaw = pkg.data.yaw;
+  auto pitch = -pkg.pitch;
+  auto yaw = pkg.yaw;
   tf2::Quaternion q;
   q.setRPY(roll, pitch, yaw);
   t.transform.rotation = tf2::toMsg(q);
@@ -570,12 +571,6 @@ void StandardRobotPpRos2Node::publishVisionData(const VisionDataPackage & pkg)
   t.transform.translation = tf2::toMsg(trans_total);
   t.transform.rotation = tf2::toMsg(q.getIdentity());
   tf_broadcaster_->sendTransform(t);
-}
-
-void StandardRobotPpRos2Node::publishPIDDebug(const PIDDebugPackage & pkg)
-{
-  // Function content reserved for user implementation
-  return;
 }
 
 /********************************************************/
@@ -623,10 +618,10 @@ void StandardRobotPpRos2Node::sendData()
 }
 
 void StandardRobotPpRos2Node::cmdVelCallback(
-  const combat_rm_interfaces::msg::NavigationCmd::SharedPtr msg)
+  const geometry_msgs::msg::Twist::SharedPtr msg)
 {
-  send_test_data_.data.vx = msg->twist.linear.x * nav_k_;
-  send_test_data_.data.vy = msg->twist.linear.y * nav_k_;
+  send_test_data_.data.vx = msg->linear.x * nav_k_;
+  send_test_data_.data.vy = msg->linear.y * nav_k_;
 }
 
 void StandardRobotPpRos2Node::cmdChassisStatusCallback(

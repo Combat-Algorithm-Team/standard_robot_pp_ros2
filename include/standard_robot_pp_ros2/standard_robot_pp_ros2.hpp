@@ -127,27 +127,12 @@ private:
   void sendData();
   void serialPortProtect();
 
-  void publishGameStatus(const GameStatusPackage & pkg);
-  void publishGameResult(const GameResultPackage & pkg);
-  void publishGameRobotHp(const GameRobotHpPackage & pkg);
-  void publishEventData(const EventDataPackage & pkg);
-  void publishRefreeWarnning(const RefreeWarnningPackage & pkg);
-  void publishDartInfo(const DartInfoPackage & pkg);
-  void publishRobotStatus(const RobotStatusPackage & pkg);
-  void publishPowerHeatData(const PowerHeatDataPackage & pkg);
-  void publishRobotPos(const RobotPosPackage & pkg);
-  void publishBuff(const BuffPackage & pkg);
-  void publishHurtData(const HurtDataPackage & pkg);
-  void publishShootData(const ShootDataPackage & pkg);
-  void publishProjectileAllowance(const ProjectileAllowancePackage & pkg);
-  void publishRfidStatus(const RfidStatusPackage & pkg);
-  void publishDartClientCmd(const DartClientCmdPackage & pkg);
-  void publishGroundRobotPosition(const GroundRobotPositionPackage & pkg);
-  void publishLidarMarkData(const LidarMarkDataPackage & pkg);
-  void publishSentryInfo(const SentryInfoPackage & pkg);
-  void publishRadarInfo(const RadarInfoPackage & pkg);
-  void publishVisionData(const VisionDataPackage & pkg);
-  void publishPIDDebug(const PIDDebugPackage & pkg);
+  void publishGameStatus(const GameStatusPackage::data & pkg);
+  void publishEventData(const EventDataPackage::data & pkg);
+  void publishRobotStatus(const RobotStatusPackage::data & pkg);
+  void publishHurtData(const HurtDataPackage::data & pkg);
+  void publishRfidStatus(const RfidStatusPackage::data & pkg);
+  void publishVisionData(const VisionDataPackage::data & pkg);
 
   void cmdVelCallback(const geometry_msgs::msg::Twist::SharedPtr msg);
   void cmdChassisStatusCallback(example_interfaces::msg::UInt8::SharedPtr msg);
