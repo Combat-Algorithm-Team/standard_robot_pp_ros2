@@ -32,9 +32,8 @@
 
 #define USB_NOT_OK_SLEEP_TIME 1000   // (ms)
 #define USB_PROTECT_SLEEP_TIME 1000  // (ms)
-#define USB_TIMEOUT 0.5   // (s)
-#define USB_PROTECT_RECONNECT_TIME 200
-#define LIVOX_IMU_HZ 200
+#define USB_TIMEOUT 0.5              // (s)
+#define USB_PROTECT_RECONNECT_TIME 1000
 
 using namespace std::chrono_literals;
 
@@ -54,19 +53,19 @@ StandardRobotPpRos2Node::StandardRobotPpRos2Node(const rclcpp::NodeOptions & opt
 
   tf_broadcaster_ = std::make_unique<tf2_ros::TransformBroadcaster>(*this);
 
-  // Param client
-  for (auto client : getClients(this)) {
-    std::string name = client->get_service_name();
-    set_mode_clients_.emplace(name, client);
-    RCLCPP_INFO(get_logger(), "Create client for service: %s", name.c_str());
-  }
-
   // Heartbeat
   heartbeat_ = fyt::HeartBeatPublisher::create(this);
 
   serial_port_protect_thread_ = std::thread(&StandardRobotPpRos2Node::serialPortProtect, this);
   receive_thread_ = std::thread(&StandardRobotPpRos2Node::receiveData, this);
   send_thread_ = std::thread(&StandardRobotPpRos2Node::sendData, this);
+
+  // Param client
+  for (auto client : getClients(this)) {
+    std::string name = client->get_service_name();
+    set_mode_clients_.emplace(name, client);
+    RCLCPP_INFO(get_logger(), "Create client for service: %s", name.c_str());
+  }
 }
 
 StandardRobotPpRos2Node::~StandardRobotPpRos2Node()
@@ -291,6 +290,8 @@ void StandardRobotPpRos2Node::serialPortProtect()
           RCLCPP_WARN(get_logger(), "No data timeout: %.2f sec → reconnect", dt);
           serial_error = true;
         }
+
+        serial_error = false;
       }
 
       if (serial_error) {
@@ -319,12 +320,12 @@ void StandardRobotPpRos2Node::serialPortProtect()
             device_name_ = candidate;
             found_port = true;
             break;
-          } else
-          {
-            RCLCPP_WARN(get_logger(), "Serial File %s not found! Trying next...", candidate.c_str());
+          } else {
+            RCLCPP_WARN(
+              get_logger(), "Serial File %s not found! Trying next...", candidate.c_str());
           }
         }
-        
+
         if (found_port) {
           // reinit serial driver and port
           if (serial_driver_) {
@@ -350,8 +351,7 @@ void StandardRobotPpRos2Node::serialPortProtect()
             get_logger(), "No serial port found in range 0-9 with base %s", base_path.c_str());
           is_usb_ok_ = false;
         }
-      }
-      else {
+      } else {
         is_usb_ok_ = true;
       }
     }
@@ -454,6 +454,7 @@ void StandardRobotPpRos2Node::receiveData()
         RCLCPP_ERROR(get_logger(), "Data segment check sum error!");
         continue;
       }
+      last_receive_time_ = this->now();
 
       ReceiveDataPackage receive_data_package = fromVector<ReceiveDataPackage>(data_buf);
 
@@ -463,8 +464,6 @@ void StandardRobotPpRos2Node::receiveData()
       publishRobotStatus(receive_data_package.data.robot_status_data);
       publishHurtData(receive_data_package.data.hurt_data);
       publishRfidStatus(receive_data_package.data.rfid_data);
-
-      last_receive_time_ = this->now();
     } catch (const std::exception & ex) {
       RCLCPP_ERROR(get_logger(), "Error receiving data: %s", ex.what());
       is_usb_ok_ = false;
@@ -592,7 +591,8 @@ void StandardRobotPpRos2Node::publishVisionData(const VisionDataPackage::data & 
   tf2::Vector3 trans_total =
     trans1 + (tf2::quatRotate(q1, trans2)) + (tf2::quatRotate(q1 * q2, trans3));
   t.transform.translation = tf2::toMsg(trans_total);
-  t.transform.rotation = tf2::toMsg(q.getIdentity());
+  q.setRPY(0.0, 0.0, 0.0);
+  t.transform.rotation = tf2::toMsg(q);
   tf_broadcaster_->sendTransform(t);
 }
 
@@ -640,8 +640,7 @@ void StandardRobotPpRos2Node::sendData()
   }
 }
 
-void StandardRobotPpRos2Node::cmdVelCallback(
-  const geometry_msgs::msg::Twist::SharedPtr msg)
+void StandardRobotPpRos2Node::cmdVelCallback(const geometry_msgs::msg::Twist::SharedPtr msg)
 {
   send_test_data_.data.vx = msg->linear.x * nav_k_;
   send_test_data_.data.vy = msg->linear.y * nav_k_;

@@ -2,8 +2,8 @@ standard_robot_pp_ros2:
   ros__parameters:
     device_name: /dev/ttyACM0
     vision_target_frame: "odom_vision"
-    nav_k: 5000.0
-    timestamp_offset: 1.07
+    nav_k: 8000.0
+    timestamp_offset: 0.032
     baud_rate: 115200
     flow_control: none
     parity: none
