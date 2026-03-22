@@ -32,6 +32,8 @@
 
 #define USB_NOT_OK_SLEEP_TIME 1000   // (ms)
 #define USB_PROTECT_SLEEP_TIME 1000  // (ms)
+#define USB_TIMEOUT 0.5   // (s)
+#define USB_PROTECT_RECONNECT_TIME 200
 #define LIVOX_IMU_HZ 200
 
 using namespace std::chrono_literals;
@@ -276,8 +278,32 @@ void StandardRobotPpRos2Node::serialPortProtect()
   while (rclcpp::ok()) {
     try {
       // 1. check if serial driver and port are valid and open
+      bool serial_error = false;
       if (!serial_driver_ || !serial_driver_->port() || !serial_driver_->port()->is_open()) {
         RCLCPP_WARN(get_logger(), "Serial port is not open, try to reconnect...");
+        serial_error = true;
+      } else {
+        // 2. check if data has been received recently
+        auto now = this->now();
+        double dt = (now - last_receive_time_).seconds();
+
+        if (dt > USB_TIMEOUT) {
+          RCLCPP_WARN(get_logger(), "No data timeout: %.2f sec → reconnect", dt);
+          serial_error = true;
+        }
+      }
+
+      if (serial_error) {
+        is_usb_ok_ = false;
+        try {
+          if (serial_driver_ && serial_driver_->port() && serial_driver_->port()->is_open()) {
+            serial_driver_->port()->close();
+          }
+        } catch (const std::exception & ex) {
+          RCLCPP_ERROR(get_logger(), "Serial port reconnection failed: %s, close", ex.what());
+        }
+
+        std::this_thread::sleep_for(std::chrono::milliseconds(USB_PROTECT_RECONNECT_TIME));
 
         bool found_port = false;
         std::string base_path = device_name_;
@@ -299,22 +325,20 @@ void StandardRobotPpRos2Node::serialPortProtect()
           }
         }
         
-
         if (found_port) {
           // reinit serial driver and port
           if (serial_driver_) {
             serial_driver_->init_port(device_name_, *device_config_);
           }
-
           // try to open the port
           if (serial_driver_->port() && !serial_driver_->port()->is_open()) {
             serial_driver_->port()->open();
           }
-
           // check if the port is open
           if (serial_driver_->port()->is_open()) {
             RCLCPP_INFO(get_logger(), "Serial port %s opened successfully!", device_name_.c_str());
             is_usb_ok_ = true;
+            last_receive_time_ = this->now();
           } else {
             RCLCPP_ERROR(
               get_logger(), "Serial port %s open failed (port is null or open failed)",
@@ -327,8 +351,6 @@ void StandardRobotPpRos2Node::serialPortProtect()
           is_usb_ok_ = false;
         }
       }
-      // the serial port is open
-      // TODO: 可以在这里添加额外的串口检查，例如发送心跳包或读取数据验证通信是否正常
       else {
         is_usb_ok_ = true;
       }
@@ -345,7 +367,7 @@ void StandardRobotPpRos2Node::serialPortProtect()
         }
       } catch (const std::exception & close_ex) {
         RCLCPP_ERROR(get_logger(), "Failed to close serial port: %s", close_ex.what());
-        serial_driver_.reset();
+        // serial_driver_.reset();
       }
     }
 
@@ -442,6 +464,7 @@ void StandardRobotPpRos2Node::receiveData()
       publishHurtData(receive_data_package.data.hurt_data);
       publishRfidStatus(receive_data_package.data.rfid_data);
 
+      last_receive_time_ = this->now();
     } catch (const std::exception & ex) {
       RCLCPP_ERROR(get_logger(), "Error receiving data: %s", ex.what());
       is_usb_ok_ = false;

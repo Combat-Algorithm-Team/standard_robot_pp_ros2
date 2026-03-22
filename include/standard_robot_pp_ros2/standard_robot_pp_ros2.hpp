@@ -70,8 +70,9 @@ private:
   std::string base_link_frame_;
   float nav_k_;
 
-  bool is_usb_ok_;
+  std::atomic<bool> is_usb_ok_{false};
   bool debug_;
+  rclcpp::Time last_receive_time_;
   std::unique_ptr<IoContext> owned_ctx_;
   std::unique_ptr<drivers::serial_driver::SerialPortConfig> device_config_;
   std::unique_ptr<drivers::serial_driver::SerialDriver> serial_driver_;
