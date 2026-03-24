@@ -580,6 +580,7 @@ void StandardRobotPpRos2Node::publishVisionData(const VisionDataPackage::data & 
   tf_broadcaster_->sendTransform(t);
 
   // base yaw to odom_vision
+  t.header.stamp = this->now();
   t.header.frame_id = "base_yaw_odom";
   t.child_frame_id = "odom_vision";
   tf2::Quaternion q1, q2;
@@ -642,6 +643,7 @@ void StandardRobotPpRos2Node::sendData()
 
 void StandardRobotPpRos2Node::cmdVelCallback(const geometry_msgs::msg::Twist::SharedPtr msg)
 {
+  nav_k_ = this->get_parameter("nav_k").as_double();
   send_test_data_.data.vx = msg->linear.x * nav_k_;
   send_test_data_.data.vy = msg->linear.y * nav_k_;
 }

@@ -225,10 +225,13 @@ struct ReceiveDataPackage
 
   } __attribute__((packed)) data;
 
+  uint8_t reserve[16];
+  uint8_t end;
+
   uint16_t check_sum;
 } __attribute__((packed));
 
-int a = sizeof(ReceiveDataPackage);
+// int a = sizeof(ReceiveDataPackage);
 
 /********************************************************/
 /* Send data                                            */
