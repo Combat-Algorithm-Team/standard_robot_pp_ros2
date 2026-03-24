@@ -35,6 +35,7 @@
 #include "example_interfaces/msg/float64.hpp"
 #include "example_interfaces/msg/u_int8.hpp"
 #include "geometry_msgs/msg/twist.hpp"
+#include "std_msgs/msg/bool.hpp"
 #include "rclcpp/rclcpp.hpp"
 #include "rm_utils/heartbeat.hpp"
 #include "sensor_msgs/msg/imu.hpp"
@@ -109,6 +110,7 @@ private:
   rclcpp::Subscription<example_interfaces::msg::UInt8>::SharedPtr cmd_sentry_status_sub_;
   rclcpp::Subscription<rm_interfaces::msg::GimbalCmd>::SharedPtr armor_solver_sub_;
   rclcpp::Subscription<rm_interfaces::msg::GimbalCmd>::SharedPtr rune_solver_sub_;
+  rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr check_target_in_region_sub_;
 
   // Client
   std::vector<rclcpp::Client<rm_interfaces::srv::SetMode>::SharedPtr> getClients(
@@ -120,6 +122,7 @@ private:
     debug_pub_map_;
 
   SendTestData send_test_data_;
+  bool check_target_in_region_;
 
   void getParams();
   void createPublisher();
@@ -139,6 +142,7 @@ private:
   void cmdChassisStatusCallback(example_interfaces::msg::UInt8::SharedPtr msg);
   void cmdSentryStatusCallback(example_interfaces::msg::UInt8::SharedPtr msg);
   void VisionCmdCallback(const rm_interfaces::msg::GimbalCmd::SharedPtr msg);
+  void checkTargetInRegionCallback(const std_msgs::msg::Bool::SharedPtr msg);
 
   bool callTriggerService(const std::string & service_name);
   void setMode(SetModeClient & client, const uint8_t mode);

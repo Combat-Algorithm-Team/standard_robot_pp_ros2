@@ -133,6 +133,10 @@ void StandardRobotPpRos2Node::createSubscription()
   cmd_vel_sub_ = this->create_subscription<geometry_msgs::msg::Twist>(
     "cmd_vel", 10,
     std::bind(&StandardRobotPpRos2Node::cmdVelCallback, this, std::placeholders::_1));
+    
+  check_target_in_region_sub_ = this->create_subscription<std_msgs::msg::Bool>(
+    "check_target_in_region", 1,
+    std::bind(&StandardRobotPpRos2Node::checkTargetInRegionCallback, this, std::placeholders::_1));
 
   armor_solver_sub_ = this->create_subscription<rm_interfaces::msg::GimbalCmd>(
     "armor_solver/cmd_gimbal", rclcpp::SensorDataQoS(),
@@ -658,6 +662,11 @@ void StandardRobotPpRos2Node::cmdSentryStatusCallback(
   const example_interfaces::msg::UInt8::SharedPtr msg)
 {
   return;
+}
+
+void StandardRobotPpRos2Node::checkTargetInRegionCallback(const std_msgs::msg::Bool::SharedPtr msg)
+{
+  check_target_in_region_ = msg->data;
 }
 
 void StandardRobotPpRos2Node::VisionCmdCallback(const rm_interfaces::msg::GimbalCmd::SharedPtr msg)
