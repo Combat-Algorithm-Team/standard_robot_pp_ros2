@@ -22,6 +22,8 @@
 #include <Eigen/Geometry>
 #include <rclcpp/logging.hpp>
 
+// #include "rm_utils/math/utils.hpp"
+#include "standard_robot_pp_ros2/crc8_crc16.hpp"
 #include "standard_robot_pp_ros2/packet_typedef.hpp"
 #include "standard_robot_pp_ros2/crc8_crc16.hpp"
 #include "std_srvs/srv/trigger.hpp"
@@ -49,18 +51,6 @@ StandardRobotPpRos2Node::StandardRobotPpRos2Node(const rclcpp::NodeOptions & opt
   getParams();
   createPublisher();
   createSubscription();
-
-  tf_broadcaster_ = std::make_unique<tf2_ros::TransformBroadcaster>(*this);
-
-  // Param client
-  for (auto client : getClients(this)) {
-    std::string name = client->get_service_name();
-    set_mode_clients_.emplace(name, client);
-    RCLCPP_INFO(get_logger(), "Create client for service: %s", name.c_str());
-  }
-
-  // Heartbeat
-  heartbeat_ = fyt::HeartBeatPublisher::create(this);
 
   serial_port_protect_thread_ = std::thread(&StandardRobotPpRos2Node::serialPortProtect, this);
   receive_thread_ = std::thread(&StandardRobotPpRos2Node::receiveData, this);
@@ -114,33 +104,21 @@ void StandardRobotPpRos2Node::createPublisher()
     this->create_publisher<combat_rm_interfaces::msg::GroundRobotPosition>("referee/ground_robot_position", 10);
   sentry_info_pub_ =
     this->create_publisher<combat_rm_interfaces::msg::SentryInfo>("referee/sentry_info", 10);
-
-  vision_data_pub_ = this->create_publisher<rm_interfaces::msg::SerialReceiveData>(
-    "serial/receive", rclcpp::SensorDataQoS());
 }
 
 void StandardRobotPpRos2Node::createSubscription()
 {
-  chassis_cmd_sub_ = this->create_subscription<combat_rm_interfaces::msg::NavigationCmd>(
-    "navigation_cmd", rclcpp::SensorDataQoS(),
-    std::bind(&StandardRobotPpRos2Node::NavCmdCallback, this, std::placeholders::_1));
+  cmd_chassis_status_sub_ = this->create_subscription<example_interfaces::msg::UInt8>(
+    "cmd_chassis_status", 1,
+    std::bind(&StandardRobotPpRos2Node::cmdChassisStatusCallback, this, std::placeholders::_1));
 
-  armor_solver_sub_ = this->create_subscription<rm_interfaces::msg::GimbalCmd>(
-    "armor_solver/cmd_gimbal", rclcpp::SensorDataQoS(),
-    std::bind(&StandardRobotPpRos2Node::VisionCmdCallback, this, std::placeholders::_1));
+  cmd_sentry_status_sub_ = this->create_subscription<example_interfaces::msg::UInt8>(
+    "cmd_sentry_status", 1,
+    std::bind(&StandardRobotPpRos2Node::cmdSentryStatusCallback, this, std::placeholders::_1));
 
-  rune_solver_sub_ = this->create_subscription<rm_interfaces::msg::GimbalCmd>(
-    "rune_solver/cmd_gimbal", rclcpp::SensorDataQoS(),
-    std::bind(&StandardRobotPpRos2Node::VisionCmdCallback, this, std::placeholders::_1));
-}
-
-std::vector<rclcpp::Client<rm_interfaces::srv::SetMode>::SharedPtr> StandardRobotPpRos2Node::getClients(
-  rclcpp::Node * node) const {
-  auto client1 = node->create_client<rm_interfaces::srv::SetMode>("armor_detector/set_mode",
-                                                                  rmw_qos_profile_services_default);
-  auto client2 = node->create_client<rm_interfaces::srv::SetMode>("armor_solver/set_mode",
-                                                                  rmw_qos_profile_services_default);
-  return {client1, client2};
+  cmd_vel_sub_ = this->create_subscription<geometry_msgs::msg::Twist>(
+    "cmd_vel", 10,
+    std::bind(&StandardRobotPpRos2Node::cmdVelCallback, this, std::placeholders::_1));
 }
 
 void StandardRobotPpRos2Node::getParams()
@@ -166,21 +144,6 @@ void StandardRobotPpRos2Node::getParams()
     device_name_ = declare_parameter<std::string>("device_name", "");
   } catch (rclcpp::ParameterTypeException & ex) {
     RCLCPP_ERROR(get_logger(), "The device name provided was invalid");
-    throw ex;
-  }
-
-  try {
-    vision_target_frame_ = declare_parameter<std::string>("vision_target_frame", "odom_vision");
-  } catch (rclcpp::ParameterTypeException & ex) {
-    RCLCPP_ERROR(get_logger(), "The vision target frame provided was invalid");
-    throw ex;
-  }
-
-  try {
-    timestamp_offset_ = this->declare_parameter("timestamp_offset", 0.0);
-    timestamp_offset_ = this->get_parameter("timestamp_offset").as_double();
-  } catch (rclcpp::ParameterTypeException & ex) {
-    RCLCPP_ERROR(get_logger(), "The timestamp offset provided was invalid");
     throw ex;
   }
 
@@ -380,11 +343,7 @@ void StandardRobotPpRos2Node::receiveData()
       serial_driver_->port()->receive(sof);
       is_checksum = true;
 
-      if (sof[0] == SOF_REFREE_HEAD) {
-        is_checksum = false;
-      }else if (sof[0] != SOF_REFREE_HEAD && sof[0] != SOF_VISION_HEAD) {
-        sof_err_count++;
-        // RCLCPP_INFO(get_logger(), "Finding sof, cnt=%d", sof_err_count);
+      if (sof[0] != 0x5A) {
         continue;
       }
 
@@ -435,112 +394,22 @@ void StandardRobotPpRos2Node::receiveData()
       data_buf.insert(data_buf.begin(), header_frame_buf.begin(), header_frame_buf.end());
 
       // 整包数据校验
-      if (!is_checksum) {
-        bool crc16_ok = crc16::verify_CRC16_check_sum(data_buf);
-        if (!crc16_ok) {
-          RCLCPP_ERROR(get_logger(), "Data segment CRC16 error!");
-          continue;
-        }
-      } else {
-        bool check_sum16_ok = checksum::verify_check_sum16(data_buf);
-        if (!check_sum16_ok) {
-          RCLCPP_ERROR(get_logger(), "Data segment check sum error!");
-          continue;
-        }
+      bool check_sum16_ok = checksum::verify_check_sum16(data_buf);
+      if (!check_sum16_ok) {
+        RCLCPP_ERROR(get_logger(), "Data segment check sum error!");
+        continue;
       }
-      
-      // crc16_ok 校验正确后根据 cmd_id 解析数据
-      uint16_t cmd_id = *reinterpret_cast<const uint16_t*>(&data_buf[5]);
-      switch (cmd_id) {
-        case ID_VISION_DATA: {
-          VisionDataPackage vision_data_package = fromVector<VisionDataPackage>(data_buf);
-          publishVisionData(vision_data_package);
-        } break;
-        case ID_GAME_STATUS: {
-          GameStatusPackage game_status_package = fromVector<GameStatusPackage>(data_buf);
-          publishGameStatus(game_status_package);
-        } break;
-        case ID_GAME_RESULT: {
-          GameResultPackage game_result_package = fromVector<GameResultPackage>(data_buf);
-          publishGameResult(game_result_package);
-        } break;
-        case ID_GAME_ROBOT_HP: {
-          GameRobotHpPackage game_robot_hp_package = fromVector<GameRobotHpPackage>(data_buf);
-          publishGameRobotHp(game_robot_hp_package);
-        } break;
-        case ID_EVENT_DATA: {
-          EventDataPackage event_data_package = fromVector<EventDataPackage>(data_buf);
-          publishEventData(event_data_package);
-        } break;
-        case ID_REFREE_WARNNING: {
-          RefreeWarnningPackage refree_warnning_package = fromVector<RefreeWarnningPackage>(data_buf);
-          publishRefreeWarnning(refree_warnning_package);
-        } break;
-        case ID_DART_INFO: {
-          DartInfoPackage dart_info_package = fromVector<DartInfoPackage>(data_buf);
-          publishDartInfo(dart_info_package);
-        } break;
-        case ID_ROBOT_STATUS: {
-          RobotStatusPackage robot_status_package = fromVector<RobotStatusPackage>(data_buf);
-          publishRobotStatus(robot_status_package);
-        } break;
-        case ID_POWER_HEAT_DATA: {
-          PowerHeatDataPackage power_heat_data_package = fromVector<PowerHeatDataPackage>(data_buf);
-          publishPowerHeatData(power_heat_data_package);
-        } break;
-        case ID_ROBOT_POS: {
-          RobotPosPackage robot_pos_package = fromVector<RobotPosPackage>(data_buf);
-          publishRobotPos(robot_pos_package);
-        } break;
-        case ID_BUFF: {
-          BuffPackage buff_package = fromVector<BuffPackage>(data_buf);
-          publishBuff(buff_package);
-        } break;
-        case ID_HURT_DATA: {
-          HurtDataPackage hurt_data_package = fromVector<HurtDataPackage>(data_buf);
-          publishHurtData(hurt_data_package);
-        } break;
-        case ID_SHOOT_DATA: {
-          ShootDataPackage shoot_data_package = fromVector<ShootDataPackage>(data_buf);
-          publishShootData(shoot_data_package);
-        } break;
-        case ID_PROJECTILE_ALLOWANCE: {
-          ProjectileAllowancePackage projectile_allowance_package = fromVector<ProjectileAllowancePackage>(data_buf);
-          publishProjectileAllowance(projectile_allowance_package);
-        } break;
-        case ID_RFID_STATUS: {
-          RfidStatusPackage rfid_status_package = fromVector<RfidStatusPackage>(data_buf);
-          publishRfidStatus(rfid_status_package);
-        } break;
-        case ID_DART_CLIENT_CMD: {
-          DartClientCmdPackage dart_client_cmd_package = fromVector<DartClientCmdPackage>(data_buf);
-          publishDartClientCmd(dart_client_cmd_package);
-        } break;
-        case ID_GROUND_ROBOT_POSITION: {
-          GroundRobotPositionPackage ground_robot_position_package =
-            fromVector<GroundRobotPositionPackage>(data_buf);
-          publishGroundRobotPosition(ground_robot_position_package);
-        } break;
-        case ID_LIDAR_MARK_DATA: {
-          LidarMarkDataPackage lidar_mark_data_package = fromVector<LidarMarkDataPackage>(data_buf);
-          publishLidarMarkData(lidar_mark_data_package);
-        } break;
-        case ID_SENTRY_INFO: {
-          SentryInfoPackage sentry_info_package = fromVector<SentryInfoPackage>(data_buf);
-          publishSentryInfo(sentry_info_package);
-        } break;
-        case ID_RADAR_INFO: {
-          RadarInfoPackage radar_info_package = fromVector<RadarInfoPackage>(data_buf);
-          publishRadarInfo(radar_info_package);
-        } break;
-        case ID_PID_DEBUG: {
-          PIDDebugPackage pid_debug_package = fromVector<PIDDebugPackage>(data_buf);
-          publishPIDDebug(pid_debug_package);
-        } break;
-        default: {
-          RCLCPP_WARN(get_logger(), "Invalid id: %d", cmd_id);
-        } break;
-      }
+      last_receive_time_ = this->now();
+
+      ReceiveDataPackage receive_data_package = fromVector<ReceiveDataPackage>(data_buf);
+
+      publishVisionData(receive_data_package.data.vision_data);
+      publishGameStatus(receive_data_package.data.game_status_data);
+      publishEventData(receive_data_package.data.event_data);
+      publishRobotStatus(receive_data_package.data.robot_status_data);
+      publishHurtData(receive_data_package.data.hurt_data);
+      publishRfidStatus(receive_data_package.data.rfid_data);
+
     } catch (const std::exception & ex) {
       RCLCPP_ERROR(get_logger(), "Error receiving data: %s", ex.what());
       is_usb_ok_ = false;
@@ -691,114 +560,6 @@ void StandardRobotPpRos2Node::publishRfidStatus(const RfidStatusPackage& pkg)
   rfid_status_pub_->publish(msg);
 }
 
-void StandardRobotPpRos2Node::publishDartClientCmd(const DartClientCmdPackage& pkg)
-{
-    // Function content reserved for user implementation
-    return;
-}
-
-void StandardRobotPpRos2Node::publishGroundRobotPosition(const GroundRobotPositionPackage& pkg)
-{
-  combat_rm_interfaces::msg::GroundRobotPosition msg;
-
-  msg.hero_position.x = pkg.data.hero_x;
-  msg.hero_position.y = pkg.data.hero_y;
-  msg.engineer_position.x = pkg.data.engineer_x;
-  msg.engineer_position.y = pkg.data.engineer_y;
-  msg.infantry_3_position.x = pkg.data.standard_3_x;
-  msg.infantry_3_position.y = pkg.data.standard_3_y;
-  msg.infantry_4_position.x = pkg.data.standard_4_x;
-  msg.infantry_4_position.y = pkg.data.standard_4_y;
-
-  ground_robot_position_pub_->publish(msg);
-}
-
-void StandardRobotPpRos2Node::publishLidarMarkData(const LidarMarkDataPackage& pkg)
-{
-    // Function content reserved for user implementation
-    return;
-}
-
-void StandardRobotPpRos2Node::publishSentryInfo(const SentryInfoPackage& pkg)
-{
-  combat_rm_interfaces::msg::SentryInfo msg;
-
-  msg.disengaged_state = pkg.data.disengaged_state;
-  msg.current_state = pkg.data.current_state;
-  msg.ally_power_rune_state = pkg.data.ally_power_rune_state;
-
-  sentry_info_pub_->publish(msg);
-}
-
-void StandardRobotPpRos2Node::publishRadarInfo(const RadarInfoPackage& pkg)
-{
-    // Function content reserved for user implementation
-    return;
-}
-
-void StandardRobotPpRos2Node::publishVisionData(const VisionDataPackage& pkg)
-{
-  // 发布 serial_receive_data
-  rm_interfaces::msg::SerialReceiveData serial_receive_data;
-  serial_receive_data.header.stamp = this->now() + rclcpp::Duration::from_seconds(timestamp_offset_);
-  serial_receive_data.header.frame_id = vision_target_frame_;
-  serial_receive_data.mode = pkg.data.enemy_color == 2 ? 1 : 0;
-  serial_receive_data.bullet_speed = pkg.data.bullet_speed;
-  serial_receive_data.roll = 0.0;
-  serial_receive_data.pitch = pkg.data.pitch;
-  serial_receive_data.yaw = pkg.data.yaw;
-  vision_data_pub_->publish(serial_receive_data);
-
-  for (auto & [service_name, client] : set_mode_clients_) {
-    if (client.mode.load() != serial_receive_data.mode && !client.on_waiting.load()) {
-      setMode(client, serial_receive_data.mode);
-    }
-  }
-  
-  geometry_msgs::msg::TransformStamped t;
-  timestamp_offset_ = this->get_parameter("timestamp_offset").as_double();
-  t.header.stamp = this->now() + rclcpp::Duration::from_seconds(timestamp_offset_);
-  t.header.frame_id = vision_target_frame_;
-  t.child_frame_id = "gimbal_link";
-  auto roll = 0.0;
-  auto pitch = -pkg.data.pitch;
-  auto yaw = pkg.data.yaw;
-  tf2::Quaternion q;
-  q.setRPY(roll, pitch, yaw);
-  t.transform.rotation = tf2::toMsg(q);
-  tf_broadcaster_->sendTransform(t);
-
-  // odom_rectify: 转了roll角后的坐标系
-  Eigen::Quaterniond q_eigen(q.w(), q.x(), q.y(), q.z());
-  Eigen::Vector3d rpy = fyt::utils::getRPY(q_eigen.toRotationMatrix());
-  q.setRPY(rpy[0], 0, 0);
-  t.header.frame_id = vision_target_frame_;
-  t.child_frame_id = vision_target_frame_ + "_rectify";
-  tf_broadcaster_->sendTransform(t);
-
-  // base yaw to odom_vision
-  t.header.frame_id = "base_yaw_odom";
-  t.child_frame_id = "odom_vision";
-  tf2::Quaternion q1, q2;
-  q1.setRPY(0.0, 0.0, yaw);
-  q2.setRPY(0.0, pitch, 0.0);
-  tf2::Vector3 trans1(0.0, 0.0, 0.193);
-  tf2::Vector3 trans2(0.0, 0.0, 0.11035);
-  tf2::Vector3 trans3(0.078, 0.0, 0.0);
-  tf2::Vector3 trans_total = trans1 + 
-                          (tf2::quatRotate(q1, trans2)) + 
-                          (tf2::quatRotate(q1 * q2, trans3));
-  t.transform.translation = tf2::toMsg(trans_total);
-  t.transform.rotation = tf2::toMsg(q.getIdentity());
-  tf_broadcaster_->sendTransform(t);
-}
-
-void StandardRobotPpRos2Node::publishPIDDebug(const PIDDebugPackage& pkg)
-{
-    // Function content reserved for user implementation
-    return;
-}
-
 /********************************************************/
 /* Send data                                            */
 /********************************************************/
@@ -848,51 +609,6 @@ void StandardRobotPpRos2Node::NavCmdCallback(const combat_rm_interfaces::msg::Na
   send_test_data_.data.vx = msg->twist.linear.x * nav_k_;
   send_test_data_.data.vy = msg->twist.linear.y * nav_k_;
   send_test_data_.data.chassis_status = msg->chassis_status;
-}
-
-void StandardRobotPpRos2Node::VisionCmdCallback(const rm_interfaces::msg::GimbalCmd::SharedPtr msg)
-{
-  send_test_data_.data.fire_advice = msg->fire_advice;
-  send_test_data_.data.pitch = msg->pitch/180.0f*M_PI;
-  send_test_data_.data.yaw = msg->yaw;
-  send_test_data_.data.sec = msg->header.stamp.sec;
-  send_test_data_.data.nanosec = msg->header.stamp.nanosec;
-  if (msg->distance < 0) {
-    send_test_data_.data.major_number = 0;
-  } else {
-    send_test_data_.data.major_number = 1;
-  } //TODO: more major number
-}
-
-void StandardRobotPpRos2Node::setMode(SetModeClient &client, const uint8_t mode) {
-  using namespace std::chrono_literals;
-
-  std::string service_name = client.ptr->get_service_name();
-  // Wait for service
-  while (!client.ptr->wait_for_service(1s)) {
-    if (!rclcpp::ok()) {
-      RCLCPP_ERROR(
-        get_logger(), "Interrupted while waiting for the service %s. Exiting.", service_name.c_str());
-      return;
-    }
-    RCLCPP_INFO(get_logger(), "Service %s not available, waiting again...", service_name.c_str());
-  }
-  if (!client.ptr->service_is_ready()) {
-    RCLCPP_WARN(get_logger(), "Service: %s is not available!", service_name.c_str());
-    return;
-  }
-  // Send request
-  auto req = std::make_shared<rm_interfaces::srv::SetMode::Request>();
-  req->mode = mode;
-
-  client.on_waiting.store(true);
-  auto result = client.ptr->async_send_request(
-    req, [mode, &client](rclcpp::Client<rm_interfaces::srv::SetMode>::SharedFuture result) {
-      client.on_waiting.store(false);
-      if (result.get()->success) {
-        client.mode.store(mode);
-      }
-    });
 }
 
 bool StandardRobotPpRos2Node::callTriggerService(const std::string & service_name)

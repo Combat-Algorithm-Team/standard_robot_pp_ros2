@@ -43,10 +43,14 @@
 #include "combat_rm_interfaces/msg/robot_pos.hpp"
 #include "combat_rm_interfaces/msg/robot_status.hpp"
 #include "combat_rm_interfaces/msg/sentry_info.hpp"
-#include "combat_rm_interfaces/msg/navigation_cmd.hpp"
-#include "rm_interfaces/msg/gimbal_cmd.hpp"
-#include "rm_interfaces/msg/serial_receive_data.hpp"
-#include "rm_interfaces/srv/set_mode.hpp"
+#include "example_interfaces/msg/float64.hpp"
+#include "example_interfaces/msg/u_int8.hpp"
+#include "geometry_msgs/msg/twist.hpp"
+#include "rclcpp/rclcpp.hpp"
+#include "sensor_msgs/msg/imu.hpp"
+#include "sensor_msgs/msg/joint_state.hpp"
+#include "serial_driver/serial_driver.hpp"
+#include "standard_robot_pp_ros2/packet_typedef.hpp"
 
 namespace standard_robot_pp_ros2
 {
@@ -56,13 +60,6 @@ public:
   explicit StandardRobotPpRos2Node(const rclcpp::NodeOptions & options);
 
   ~StandardRobotPpRos2Node() override;
-
-  struct SetModeClient {
-    SetModeClient(rclcpp::Client<rm_interfaces::srv::SetMode>::SharedPtr p) : ptr(p) {}
-    std::atomic<bool> on_waiting = false;
-    std::atomic<int> mode = 0;
-    rclcpp::Client<rm_interfaces::srv::SetMode>::SharedPtr ptr;
-  };
 
 private:
   // Parameter 
@@ -77,10 +74,6 @@ private:
   std::unique_ptr<drivers::serial_driver::SerialDriver> serial_driver_;
   bool record_rosbag_;
   bool set_detector_color_;
-  
-  // TF Broadcaster
-  double timestamp_offset_ = 0;
-  std::unique_ptr<tf2_ros::TransformBroadcaster> tf_broadcaster_;
 
   std::thread receive_thread_;
   std::thread send_thread_;
@@ -97,23 +90,11 @@ private:
   rclcpp::Publisher<combat_rm_interfaces::msg::RfidStatus>::SharedPtr rfid_status_pub_;
   rclcpp::Publisher<combat_rm_interfaces::msg::GroundRobotPosition>::SharedPtr ground_robot_position_pub_;
   rclcpp::Publisher<combat_rm_interfaces::msg::SentryInfo>::SharedPtr sentry_info_pub_;
-  // vision publisher
-  rclcpp::Publisher<rm_interfaces::msg::SerialReceiveData>::SharedPtr vision_data_pub_;
-  fyt::HeartBeatPublisher::SharedPtr heartbeat_;
 
   // Subscribe
-  rclcpp::Subscription<combat_rm_interfaces::msg::NavigationCmd>::SharedPtr chassis_cmd_sub_;
-  rclcpp::Subscription<rm_interfaces::msg::GimbalCmd>::SharedPtr armor_solver_sub_;
-  rclcpp::Subscription<rm_interfaces::msg::GimbalCmd>::SharedPtr rune_solver_sub_;
-
-  // Client
-  std::vector<rclcpp::Client<rm_interfaces::srv::SetMode>::SharedPtr> getClients(
-    rclcpp::Node * node) const;
-    
-  std::unordered_map<std::string, SetModeClient> set_mode_clients_;
-
-  std::unordered_map<std::string, rclcpp::Publisher<example_interfaces::msg::Float64>::SharedPtr>
-    debug_pub_map_;
+  rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr cmd_vel_sub_;
+  rclcpp::Subscription<example_interfaces::msg::UInt8>::SharedPtr cmd_chassis_status_sub_;
+  rclcpp::Subscription<example_interfaces::msg::UInt8>::SharedPtr cmd_sentry_status_sub_;
 
   SendTestData send_test_data_;
 
@@ -124,33 +105,17 @@ private:
   void sendData();
   void serialPortProtect();
 
-  void publishGameStatus(const GameStatusPackage& pkg);
-  void publishGameResult(const GameResultPackage& pkg);
-  void publishGameRobotHp(const GameRobotHpPackage& pkg);
-  void publishEventData(const EventDataPackage& pkg);
-  void publishRefreeWarnning(const RefreeWarnningPackage& pkg);
-  void publishDartInfo(const DartInfoPackage& pkg);
-  void publishRobotStatus(const RobotStatusPackage& pkg);
-  void publishPowerHeatData(const PowerHeatDataPackage& pkg);
-  void publishRobotPos(const RobotPosPackage& pkg);
-  void publishBuff(const BuffPackage& pkg);
-  void publishHurtData(const HurtDataPackage& pkg);
-  void publishShootData(const ShootDataPackage& pkg);
-  void publishProjectileAllowance(const ProjectileAllowancePackage& pkg);
-  void publishRfidStatus(const RfidStatusPackage& pkg);
-  void publishDartClientCmd(const DartClientCmdPackage& pkg);
-  void publishGroundRobotPosition(const GroundRobotPositionPackage& pkg);
-  void publishLidarMarkData(const LidarMarkDataPackage& pkg);
-  void publishSentryInfo(const SentryInfoPackage& pkg);
-  void publishRadarInfo(const RadarInfoPackage& pkg);
-  void publishVisionData(const VisionDataPackage& pkg);
-  void publishPIDDebug(const PIDDebugPackage& pkg);
+  void publishGameStatus(const GameStatusPackage::data & pkg);
+  void publishEventData(const EventDataPackage::data & pkg);
+  void publishRobotStatus(const RobotStatusPackage::data & pkg);
+  void publishHurtData(const HurtDataPackage::data & pkg);
+  void publishRfidStatus(const RfidStatusPackage::data & pkg);
 
-  void NavCmdCallback(const combat_rm_interfaces::msg::NavigationCmd::SharedPtr msg);
-  void VisionCmdCallback(const rm_interfaces::msg::GimbalCmd::SharedPtr msg);
+  void cmdVelCallback(const geometry_msgs::msg::Twist::SharedPtr msg);
+  void cmdChassisStatusCallback(example_interfaces::msg::UInt8::SharedPtr msg);
+  void cmdSentryStatusCallback(example_interfaces::msg::UInt8::SharedPtr msg);
 
   bool callTriggerService(const std::string & service_name);
-  void setMode(SetModeClient &client, const uint8_t mode);
 };
 }  // namespace standard_robot_pp_ros2
 
