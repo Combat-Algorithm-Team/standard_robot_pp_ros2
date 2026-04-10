@@ -1,4 +1,4 @@
-// Copyright 2025 SMBU-PolarBear-Robotics-Team
+// Copyright 2026 Combat Robotics Team
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,53 +12,19 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef STANDARD_ROBOT_PP_ROS2__PACKET_TYPEDEF_HPP_
-#define STANDARD_ROBOT_PP_ROS2__PACKET_TYPEDEF_HPP_
+#ifndef IO__PACKET_TYPEDEF_HPP_
+#define IO__PACKET_TYPEDEF_HPP_
 
 #include <algorithm>
 #include <cstdint>
 #include <vector>
 
-namespace standard_robot_pp_ros2
+namespace io
 {
-const uint8_t SOF_REFREE_HEAD = 0xA5;
-const uint8_t SOF_VISION_HEAD = 0x5A;
-const uint8_t SOF_SEND = 0x5A;
+const uint8_t SOF_HEAD = 0x5A;
 const uint8_t SOF_TAIL = 0x55;
-
-// Receive
-const uint16_t ID_GAME_STATUS = 0x0001;
-const uint16_t ID_GAME_RESULT = 0x0002;
-const uint16_t ID_GAME_ROBOT_HP = 0x0003;
-const uint16_t ID_EVENT_DATA = 0x0101;
-const uint16_t ID_REFREE_WARNNING = 0x0104;
-const uint16_t ID_DART_INFO =0x0105;
-const uint16_t ID_ROBOT_STATUS = 0x0201;
-const uint16_t ID_POWER_HEAT_DATA = 0x0202;
-const uint16_t ID_ROBOT_POS = 0x0203;
-const uint16_t ID_BUFF = 0x0204;
-const uint16_t ID_HURT_DATA = 0x0206;
-const uint16_t ID_SHOOT_DATA = 0x0207;
-const uint16_t ID_PROJECTILE_ALLOWANCE = 0x0208;
-const uint16_t ID_RFID_STATUS = 0x0209;
-const uint16_t ID_DART_CLIENT_CMD = 0x020A;
-const uint16_t ID_GROUND_ROBOT_POSITION = 0x020B;
-const uint16_t ID_LIDAR_MARK_DATA = 0x020C;
-const uint16_t ID_SENTRY_INFO = 0x020D;
-const uint16_t ID_RADAR_INFO = 0x020E;
-
-const uint16_t ID_DEBUG = 0x0401;
-const uint16_t ID_VISION_DATA = 0x0402;
-const uint16_t ID_PID_DEBUG = 0x0403;
-
-// Send
-const uint16_t ID_VISION_CMD = 0x01;
-const uint16_t ID_NAV_CMD = 0x02;
-
-const uint8_t DEBUG_PACKAGE_NUM = 10;
-const uint8_t DEBUG_PACKAGE_NAME_LEN = 10;
-
-const uint16_t MAX_PACKAGE_LEN = 64;
+const uint16_t PACKAGE_LENGTH = 64;
+const float RECEIVE_TIMEOUT = 1.0f;
 
 struct HeaderFrame
 {
@@ -72,70 +38,17 @@ struct HeaderFrame
 /* Receive data                                         */
 /********************************************************/
 
-// 串口调试数据包
-struct DebugPackage
-{
-  HeaderFrame frame_header;
-  uint16_t cmd_id;
-  uint32_t time_stamp;
-
-  struct
-  {
-    uint8_t name[DEBUG_PACKAGE_NAME_LEN];
-    uint8_t type;
-    float data;
-  } __attribute__((packed)) packages[DEBUG_PACKAGE_NUM];
-
-  uint16_t crc16;
-} __attribute__((packed));
-
 // 比赛状态数据包
 struct GameStatusPackage
 {
   HeaderFrame frame_header;
   uint16_t cmd_id;
 
-  struct
+  struct data
   {
-    uint8_t game_type : 4;
-    uint8_t game_progress : 4;
+    uint8_t game_progress;
     uint16_t stage_remain_time;
-    uint64_t sync_time_stamp;
-  } __attribute__((packed)) data;
-
-  uint16_t crc16;
-} __attribute__((packed));
-
-// 比赛结果数据包
-struct GameResultPackage
-{
-  HeaderFrame frame_header;
-  uint16_t cmd_id;
-
-  struct
-  {
-    uint8_t winner;
-  } __attribute__((packed)) data;
-
-  uint16_t crc16;
-} __attribute__((packed));
-
-// 比赛友方机器人血量数据包
-struct GameRobotHpPackage
-{
-  HeaderFrame frame_header;
-  uint16_t cmd_id;
-
-  struct
-  {
-    uint16_t ally_1_robot_hp;
-    uint16_t ally_2_robot_hp;
-    uint16_t ally_3_robot_hp;
-    uint16_t ally_4_robot_hp;
-    uint16_t ally_7_robot_hp;
-    uint16_t ally_outpost_hp;
-    uint16_t ally_base_hp;
-  } __attribute__((packed)) data;
+  } __attribute__((packed));
 
   uint16_t crc16;
 } __attribute__((packed));
@@ -146,7 +59,7 @@ struct EventDataPackage
   HeaderFrame frame_header;
   uint16_t cmd_id;
 
-  struct
+  struct data
   {
     uint32_t ally_supply_zone_non_exchange : 1;
     uint32_t ally_supply_zone_exchange : 1;
@@ -166,75 +79,26 @@ struct EventDataPackage
     uint32_t base_gain_point : 1;
 
     uint32_t reserved2 : 2;
-  } __attribute__((packed)) data;
+  } __attribute__((packed));
 
   uint16_t crc16;
 } __attribute__((packed));
 
-// 裁判警告数据包
-struct RefreeWarnningPackage
+// 比赛友方机器人血量数据包
+struct GameRobotHpPackage
 {
   HeaderFrame frame_header;
   uint16_t cmd_id;
 
-  struct
+  struct data
   {
-    uint8_t reserve[3];
-  } __attribute__((packed)) data;
-
-  uint16_t crc16;
-} __attribute__((packed));
-
-// 飞镖发射信息数据包
-struct DartInfoPackage
-{
-  HeaderFrame frame_header;
-  uint16_t cmd_id;
-
-  struct
-  {
-    uint8_t reserve[3];
-  } __attribute__((packed)) data;
-
-  uint16_t crc16;
-} __attribute__((packed));
-
-// 机器人性能体系状态数据包
-struct RobotStatusPackage
-{
-  HeaderFrame frame_header;
-  uint16_t cmd_id;
-
-  struct
-  {
-    uint8_t robot_id;
-    uint8_t robot_level;
-    uint16_t current_hp;
-    uint16_t maximum_hp;
-    uint16_t shooter_barrel_cooling_value;
-    uint16_t shooter_barrel_heat_limit;
-    uint16_t chassis_power_limit;
-    uint8_t power_management_gimbal_output : 1;
-    uint8_t power_management_chassis_output : 1;
-    uint8_t power_management_shooter_output : 1;
-  } __attribute__((packed)) data;
-
-  uint16_t crc16;
-} __attribute__((packed));
-
-// 底盘缓冲能量和射击热量数据包
-struct PowerHeatDataPackage
-{
-  HeaderFrame frame_header;
-  uint16_t cmd_id;
-
-  struct
-  {
-    uint32_t reserve[2];
-    uint16_t buffer_energy;
-    uint16_t shooter_17mm_barrel_heat;
-    uint16_t shooter_42mm_barrel_heat; 
-  } __attribute__((packed)) data;
+    uint16_t hero_hp;
+    uint16_t engineer_hp;
+    uint16_t standard_3_hp;
+    uint16_t standard_4_hp;
+    uint16_t ally_outpost_hp;
+    uint16_t ally_base_hp;
+  } __attribute__((packed));
 
   uint16_t crc16;
 } __attribute__((packed));
@@ -245,31 +109,26 @@ struct RobotPosPackage
   HeaderFrame frame_header;
   uint16_t cmd_id;
 
-  struct
+  struct data
   {
     float x;
     float y;
-    float angle;  
-  } __attribute__((packed)) data;
+  } __attribute__((packed));
 
   uint16_t crc16;
 } __attribute__((packed));
 
-// 机器人增益和底盘能量数据包
-struct BuffPackage
+// 机器人性能体系状态数据包
+struct RobotStatusPackage
 {
   HeaderFrame frame_header;
   uint16_t cmd_id;
 
-  struct
+  struct data
   {
-    uint8_t recovery_buff;
-    uint16_t cooling_buff;
-    uint8_t defence_buff;
-    uint8_t vulnerability_buff;
-    uint16_t attack_buff;
-    uint8_t remaining_energy; 
-  } __attribute__((packed)) data;
+    uint16_t current_hp;
+    uint16_t maximum_hp;
+  } __attribute__((packed));
 
   uint16_t crc16;
 } __attribute__((packed));
@@ -280,45 +139,11 @@ struct HurtDataPackage
   HeaderFrame frame_header;
   uint16_t cmd_id;
 
-  struct
+  struct data
   {
-    uint8_t armor_id : 4;
-    uint8_t hp_deduction_reason : 4; 
-  } __attribute__((packed)) data;
-
-  uint16_t crc16;
-} __attribute__((packed));
-
-// 机器人射击数据包
-struct ShootDataPackage
-{
-  HeaderFrame frame_header;
-  uint16_t cmd_id;
-
-  struct
-  {
-    uint8_t bullet_type;
-    uint8_t shooter_number;
-    uint8_t launching_frequency;
-    float initial_speed;
-  } __attribute__((packed)) data;
-
-  uint16_t crc16;
-} __attribute__((packed));
-
-// 机器人与比赛允许发弹量和金币数据包
-struct ProjectileAllowancePackage
-{
-  HeaderFrame frame_header;
-  uint16_t cmd_id;
-
-  struct
-  {
-    uint16_t projectile_allowance_17mm;
-    uint16_t projectile_allowance_42mm;
-    uint16_t remaining_gold_coin;
-    uint16_t projectile_allowance_fortress; 
-  } __attribute__((packed)) data;
+    uint8_t armor_id;
+    uint8_t hp_deduction_reason;
+  } __attribute__((packed));
 
   uint16_t crc16;
 } __attribute__((packed));
@@ -329,7 +154,7 @@ struct RfidStatusPackage
   HeaderFrame frame_header;
   uint16_t cmd_id;
 
-  struct
+  struct data
   {
     uint32_t ally_base_gain_point : 1;
     uint32_t ally_central_highland_gain_point : 1;
@@ -344,24 +169,9 @@ struct RfidStatusPackage
     uint32_t enemy_fortress_gain_point : 1;
     uint32_t enemy_outpost_gain_point : 1;
     uint32_t reserved3 : 6;
+  } __attribute__((packed));
 
-    uint8_t reserve4;
-  } __attribute__((packed)) data;
-
-  uint16_t crc16;
-} __attribute__((packed));
-
-// 飞镖站状态数据包
-struct DartClientCmdPackage
-{
-  HeaderFrame frame_header;
-  uint16_t cmd_id;
-
-  struct
-  {
-    uint8_t reserve[6];
-  } __attribute__((packed)) data;
-
+  uint8_t reserve4;
   uint16_t crc16;
 } __attribute__((packed));
 
@@ -371,7 +181,7 @@ struct GroundRobotPositionPackage
   HeaderFrame frame_header;
   uint16_t cmd_id;
 
-  struct
+  struct data
   {
     float hero_x;
     float hero_y;
@@ -385,22 +195,7 @@ struct GroundRobotPositionPackage
     float standard_4_x;
     float standard_4_y;
 
-    float reserve[2];
-  } __attribute__((packed)) data;
-
-  uint16_t crc16;
-} __attribute__((packed));
-
-// 雷达易伤状态数据包
-struct LidarMarkDataPackage
-{
-  HeaderFrame frame_header;
-  uint16_t cmd_id;
-
-  struct
-  {
-    uint16_t reserve;
-  } __attribute__((packed)) data;
+  } __attribute__((packed)) ;
 
   uint16_t crc16;
 } __attribute__((packed));
@@ -411,160 +206,112 @@ struct SentryInfoPackage
   HeaderFrame frame_header;
   uint16_t cmd_id;
 
-  struct
+  struct data
   {
-    uint32_t reserve1;
-    uint16_t disengaged_state : 1;
-    uint16_t reserve2 : 11;
-    uint16_t current_state : 2;
-    uint16_t ally_power_rune_state : 1;
-    uint16_t reserve3 : 1;
-  } __attribute__((packed)) data;
+    uint8_t disengaged_state;
+    uint8_t current_state;
+    uint8_t ally_power_rune_state;
+  } __attribute__((packed)) ;
 
   uint16_t crc16;
 } __attribute__((packed));
 
-// 雷达信息数据包
-struct RadarInfoPackage
+// 视觉包
+struct __attribute__((packed)) GimbalToVision
 {
-  HeaderFrame frame_header;
-  uint16_t cmd_id;
+  uint8_t head[2] = {0x5A, 0x01};
+  float DWT_stamp;  // DWT计数器，单位为微秒
+  
+  uint8_t mode;  // 0: 空闲, 1: 自瞄, 2: 小符, 3: 大符
+  // 这里的enemycolor应该忽略，其值为yaml写死的0或1
+  
+  float q[4];    // wxyz顺序
+  float pitch;
+  float pitch_vel;
+  float yaw;
+  float yaw_vel;
+  float yaw_diff;
+  float bullet_speed;
+  uint16_t bullet_count;  // 子弹累计发送次数
 
-  struct
-  {
-    uint8_t reserve;
-  } __attribute__((packed)) data;
+  uint8_t reserved[12];
+  uint8_t tail = 0x55;
+  uint16_t check_sum;
+};
 
-  uint16_t crc16;
-} __attribute__((packed));
-
-// Vision 数据包
-struct VisionDataPackage
+// 裁判系统包
+struct RefereePackage1
 {
-  HeaderFrame frame_header;
-  uint16_t cmd_id;
+  uint8_t head[2];
+  float DWT_stamp;  // DWT计数器，单位为微秒
 
-  struct
-  {
-    float time_stamp;
-    uint8_t enemy_color;
-    float pitch;
-    float yaw;
-    float yaw_diff;
-    float bullet_speed;
-  } __attribute__((packed)) data;
+  GameStatusPackage::data game_status_data;
+  EventDataPackage::data event_data;
+  RobotStatusPackage::data robot_status_data;
+  HurtDataPackage::data hurt_data;
+  SentryInfoPackage::data sentry_info_data;
+  RfidStatusPackage::data rfid_status_data;
 
+  uint8_t reserved[35];
+  uint8_t tail;
   uint16_t check_sum;
 } __attribute__((packed));
 
-// PID调参数据包
-struct PIDDebugPackage
+// 裁判系统包
+struct RefereePackage2
 {
-  HeaderFrame frame_header;
-  uint16_t cmd_id;
+  uint8_t head[2];
+  float DWT_stamp;  // DWT计数器，单位为微秒
 
-  struct
-  {
-    float kp;
-    float ki;
-    float kd;
-  } __attribute__((packed)) data;
+  RobotPosPackage::data robot_pos_data;
+  GroundRobotPositionPackage::data ground_robot_pos_data;
+  GameRobotHpPackage::data game_robot_hp_data;
 
-  uint16_t crc16;
+  uint8_t reserved[3];
+  uint8_t tail;
+  uint16_t check_sum;
 } __attribute__((packed));
 
-/********************************************************/
-/* Send data                                            */
-/********************************************************/
-
-struct NavigationCmd
+/********************************************************
+/*  send
+/******************************************************** */
+// 自瞄下行包
+struct __attribute__((packed)) VisionToGimbal
 {
-  HeaderFrame frame_header;
+  uint8_t head[2] = {0x5A, 0x01};
+  uint64_t time_stamp;
+  
+  uint8_t mode;  // 0: 不控制, 1: 控制云台但不开火，2: 控制云台且开火
+  float pitch;
+  float pitch_vel;
+  float pitch_acc;
+  float yaw;
+  float yaw_vel;
+  float yaw_acc;
 
-  // uint32_t time_stamp;
+  uint8_t reserved[26];
+  uint16_t check_sum;
+  uint8_t tail = 0x55;
+};
 
-  struct
-  {
-    struct
-    {
-      float vx;
-      float vy;
-      float wz;
-    } __attribute__((packed)) chassis_vector;
-
-    struct 
-    {
-      uint8_t chassis_spinning;
-      uint8_t is_navigating;
-    } __attribute__((packed)) control_mode;
-
-  } __attribute__((packed)) data;
-
-} __attribute__((packed));
-
-struct VisionCmd
+// 导航下行包
+struct __attribute__((packed)) NavToGimbal
 {
-  HeaderFrame frame_header;
-
-  // uint32_t time_stamp;
-
-  struct
-  {
+  uint8_t head[2] = {0x5A, 0x02};
+  uint64_t time_stamp;
     
-    struct
-    {
-      float pitch;
-      float yaw;
-      float distance;
-    } __attribute__((packed)) gimbal_vector;
+  uint8_t chassis_status;
+  uint8_t sentry_status;
+  uint8_t mode;             //0：对装甲板 1：对前哨站 2：对能量机关 3：对基地（）
 
-    struct
-    {
-      uint32_t sec;
-      uint32_t nanosec;
-    } __attribute__((packed)) time_stamp;
+  float vx;
+  float vy;
+  float vyaw;
 
-    struct 
-    {
-      uint8_t fire_advice;
-      uint8_t reserve2;
-      uint8_t reserve3;
-      uint8_t reserve4;
-    } __attribute__((packed)) control_mode;
-
-  } __attribute__((packed)) data;
-
-} __attribute__((packed));
-
-struct SendTestData
-{
-  uint8_t frame_header;
-
-  struct
-  {
-    uint8_t fire_advice; // 0:不开火 1:开火
-    uint8_t major_number;
-    uint8_t chassis_status;
-    float pitch;
-    float yaw;
-    uint32_t sec;
-    uint32_t nanosec;
-    float vx;
-    float vy;
-    float detect_x1;
-    float detect_y1;
-    float detect_z1;
-    uint8_t detect_number1;
-    float detect_x2;
-    float detect_y2;
-    float detect_z2;
-    uint8_t detect_number2;
-    uint8_t reserve[7];
-  } __attribute__((packed)) data;
-
+  uint8_t reserved[36];
   uint16_t check_sum;
-  uint8_t frame_tail;
-} __attribute__((packed));
+  uint8_t tail = 0x55;
+};
 
 /********************************************************/
 /* template                                             */
@@ -579,6 +326,14 @@ inline T fromVector(const std::vector<uint8_t> & data)
 }
 
 template <typename T>
+inline T fromVector(const std::vector<uint8_t> &data, size_t offset) {
+    T packet;
+    const uint8_t *src = data.data() + offset;
+    std::copy(src, src + sizeof(T), reinterpret_cast<uint8_t *>(&packet));
+    return packet;
+}
+
+template <typename T>
 inline std::vector<uint8_t> toVector(const T & data)
 {
   std::vector<uint8_t> packet(sizeof(T));
@@ -588,6 +343,6 @@ inline std::vector<uint8_t> toVector(const T & data)
   return packet;
 }
 
-}  // namespace standard_robot_pp_ros2
+}  // namespace io
 
-#endif  // STANDARD_ROBOT_PP_ROS2__PACKET_TYPEDEF_HPP_
+#endif  // IO__PACKET_TYPEDEF_HPP_

@@ -75,6 +75,8 @@ private:
   bool record_rosbag_;
   bool set_detector_color_;
 
+  float last_receive_time_;
+
   std::thread receive_thread_;
   std::thread send_thread_;
   std::thread serial_port_protect_thread_;
@@ -96,7 +98,7 @@ private:
   rclcpp::Subscription<example_interfaces::msg::UInt8>::SharedPtr cmd_chassis_status_sub_;
   rclcpp::Subscription<example_interfaces::msg::UInt8>::SharedPtr cmd_sentry_status_sub_;
 
-  SendTestData send_test_data_;
+  NavToGimbal nav_to_gimbal_data_;
 
   void getParams();
   void createPublisher();
@@ -105,11 +107,15 @@ private:
   void sendData();
   void serialPortProtect();
 
-  void publishGameStatus(const GameStatusPackage::data & pkg);
-  void publishEventData(const EventDataPackage::data & pkg);
-  void publishRobotStatus(const RobotStatusPackage::data & pkg);
-  void publishHurtData(const HurtDataPackage::data & pkg);
-  void publishRfidStatus(const RfidStatusPackage::data & pkg);
+  void publish(const GameStatusPackage::data & pkg);
+  void publish(const EventDataPackage::data & pkg);
+  void publish(const RobotStatusPackage::data & pkg);
+  void publish(const HurtDataPackage::data & pkg);
+  void publish(const RfidStatusPackage::data & pkg);
+  void publish(const RobotPosPackage::data & pkg);
+  void publish(const GroundRobotPositionPackage::data & pkg);
+  void publish(const GameRobotHpPackage::data & pkg);
+
 
   void cmdVelCallback(const geometry_msgs::msg::Twist::SharedPtr msg);
   void cmdChassisStatusCallback(example_interfaces::msg::UInt8::SharedPtr msg);
