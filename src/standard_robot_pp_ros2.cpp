@@ -309,7 +309,6 @@ void StandardRobotPpRos2Node::serialPortProtect()
         // serial_driver_.reset();
       }
     }
-
     // sleep for a while before next check
     std::this_thread::sleep_for(std::chrono::milliseconds(USB_PROTECT_SLEEP_TIME));
   }
