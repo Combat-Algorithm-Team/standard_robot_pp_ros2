@@ -12,19 +12,24 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#ifndef IO__PACKET_TYPEDEF_HPP_
-#define IO__PACKET_TYPEDEF_HPP_
+#ifndef STANDARD_ROBOT_PP_ROS2__PACKET_TYPEDEF_HPP_
+#define STANDARD_ROBOT_PP_ROS2__PACKET_TYPEDEF_HPP_
 
 #include <algorithm>
 #include <cstdint>
 #include <vector>
 
-namespace io
+namespace standard_robot_pp_ros2
 {
-const uint8_t SOF_HEAD = 0x5A;
-const uint8_t SOF_TAIL = 0x55;
-const uint16_t PACKAGE_LENGTH = 64;
-const float RECEIVE_TIMEOUT = 1.0f;
+const uint8_t SOF_HEAD            = 0x5A;
+const uint8_t SOF_TAIL            = 0x55;
+const uint8_t RECEIVE_VISION_ID   = 0x01;
+const uint8_t RECEIVE_REFEREE1_ID = 0x02;
+const uint8_t RECEIVE_REFEREE2_ID = 0x03;
+const uint8_t SEND_NAV_ID         = 0x55;
+
+const uint16_t PACKAGE_LENGTH     = 64;
+const float RECEIVE_TIMEOUT       = 0.0f;
 
 struct HeaderFrame
 {
@@ -272,9 +277,11 @@ struct RefereePackage2
   uint16_t check_sum;
 } __attribute__((packed));
 
-/********************************************************
-/*  send
-/******************************************************** */
+
+/********************************************************/
+/* Send data                                         */
+/********************************************************/
+
 // 自瞄下行包
 struct __attribute__((packed)) VisionToGimbal
 {
@@ -343,6 +350,6 @@ inline std::vector<uint8_t> toVector(const T & data)
   return packet;
 }
 
-}  // namespace io
+}  // namespace standard_robot_pp_ros2
 
-#endif  // IO__PACKET_TYPEDEF_HPP_
+#endif  // STANDARD_ROBOT_PP_ROS2__PACKET_TYPEDEF_HPP_

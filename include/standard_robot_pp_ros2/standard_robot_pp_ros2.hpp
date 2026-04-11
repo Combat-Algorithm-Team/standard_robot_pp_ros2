@@ -75,7 +75,9 @@ private:
   bool record_rosbag_;
   bool set_detector_color_;
 
-  float last_receive_time_;
+  rclcpp::Time last_receive_time_;
+  float pkg_last_receive_time_;
+  
 
   std::thread receive_thread_;
   std::thread send_thread_;

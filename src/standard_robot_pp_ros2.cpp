@@ -24,7 +24,6 @@
 
 #include "standard_robot_pp_ros2/crc8_crc16.hpp"
 #include "standard_robot_pp_ros2/packet_typedef.hpp"
-#include "standard_robot_pp_ros2/crc8_crc16.hpp"
 #include "std_srvs/srv/trigger.hpp"
 #include "tf2_geometry_msgs/tf2_geometry_msgs.hpp"
 
@@ -33,7 +32,8 @@
 
 #define USB_NOT_OK_SLEEP_TIME 1000   // (ms)
 #define USB_PROTECT_SLEEP_TIME 1000  // (ms)
-#define LIVOX_IMU_HZ 200
+#define USB_TIMEOUT 0.5              // (s)
+#define USB_PROTECT_RECONNECT_TIME 1000
 
 using namespace std::chrono_literals;
 
@@ -130,8 +130,8 @@ void StandardRobotPpRos2Node::getParams()
   auto sb = StopBits::ONE;
 
   try {
-    nav_k_ = declare_parameter<float>("nav_k", 1.0);
-    nav_k_ = this->get_parameter("nav_k").as_float();
+    nav_k_ = declare_parameter<double>("nav_k", 1.0);
+    nav_k_ = this->get_parameter("nav_k").as_double();
   } catch (rclcpp::ParameterTypeException & ex) {
     RCLCPP_ERROR(get_logger(), "The nav k provided was invalid");
     throw ex;
@@ -208,8 +208,6 @@ void StandardRobotPpRos2Node::getParams()
 
   record_rosbag_ = declare_parameter("record_rosbag", false);
   debug_ = declare_parameter("debug", false);
-
-  // set_detector_color_ = declare_parameter("set_detector_color", false);
 }
 
 /********************************************************/
@@ -221,27 +219,50 @@ void StandardRobotPpRos2Node::serialPortProtect()
 
   while (rclcpp::ok()) {
     try {
-      // 1. check if serial driver and port are valid and open
+      bool serial_error = false;
       if (!serial_driver_ || !serial_driver_->port() || !serial_driver_->port()->is_open()) {
         RCLCPP_WARN(get_logger(), "Serial port is not open, try to reconnect...");
+        serial_error = true;
+      } else {
+        auto now = this->now();
+        double dt = (now - last_receive_time_).seconds();
+
+        if (dt > USB_TIMEOUT) {
+          RCLCPP_WARN(get_logger(), "No data timeout: %.2f sec → reconnect", dt);
+          serial_error = true;
+        }
+        serial_error = false;
+      }
+      if (serial_error) {
+        is_usb_ok_ = false;
+        try {
+          if (serial_driver_ && serial_driver_->port() && serial_driver_->port()->is_open()) {
+            serial_driver_->port()->close();
+          }
+        } catch (const std::exception & ex) {
+          RCLCPP_ERROR(get_logger(), "Serial port reconnection failed: %s, close", ex.what());
+        }
+
+        std::this_thread::sleep_for(std::chrono::milliseconds(USB_PROTECT_RECONNECT_TIME));
 
         bool found_port = false;
-        std::string base_port = device_name_;
+        std::string base_path = device_name_;
         size_t last_non_digit = base_path.find_last_not_of("0123456789");
         if (last_non_digit != std::string::npos && last_non_digit + 1 < base_path.size()) {
-            base_path = base_path.substr(0, last_non_digit + 1);  // 去掉末尾数字
+          base_path = base_path.substr(0, last_non_digit + 1);  // 去掉末尾数字
         }
         for (int i = 0; i < 10; ++i) {
           std::string candidate = base_path + std::to_string(i);
-          if (std::filesystem::exists(candidate)) {
-              // 找到设备
-              RCLCPP_INFO(get_logger(), "Serial File %s found!", candidate.c_str());
-              device_name_ = candidate;
-              found_port = true;
-              break;
+          if (rcpputils::fs::exists(candidate)) {
+            // 找到设备
+            RCLCPP_INFO(get_logger(), "Serial File %s found!", candidate.c_str());
+            device_name_ = candidate;
+            found_port = true;
+            break;
+          } else {
+            RCLCPP_WARN(
+              get_logger(), "Serial File %s not found! Trying next...", candidate.c_str());
           }
-        } else {
-            RCLCPP_WARN(get_logger(), "Serial File %s not found! Trying next...", candidate.c_str());
         }
 
         if (found_port) {
@@ -249,31 +270,30 @@ void StandardRobotPpRos2Node::serialPortProtect()
           if (serial_driver_) {
             serial_driver_->init_port(device_name_, *device_config_);
           }
-          
           // try to open the port
           if (serial_driver_->port() && !serial_driver_->port()->is_open()) {
             serial_driver_->port()->open();
           }
-
           // check if the port is open
           if (serial_driver_->port()->is_open()) {
             RCLCPP_INFO(get_logger(), "Serial port %s opened successfully!", device_name_.c_str());
             is_usb_ok_ = true;
+            last_receive_time_ = this->now();
           } else {
-            RCLCPP_ERROR(get_logger(), "Serial port %s open failed (port is null or open failed)", device_name_.c_str());
+            RCLCPP_ERROR(
+              get_logger(), "Serial port %s open failed (port is null or open failed)",
+              device_name_.c_str());
             is_usb_ok_ = false;
           }
-        }else {
-          RCLCPP_ERROR(get_logger(), "No serial port found in range 0-9 with base %s", device_name_.c_str(), current_port.c_str());
+        } else {
+          RCLCPP_ERROR(
+            get_logger(), "No serial port found in range 0-9 with base %s", base_path.c_str());
           is_usb_ok_ = false;
         }
-      } 
-      // the serial port is open
-      // TODO: 可以在这里添加额外的串口检查，例如发送心跳包或读取数据验证通信是否正常
-      else {
+      } else {
         is_usb_ok_ = true;
       }
-    } 
+    }
     // catch exception
     catch (const std::exception & ex) {
       RCLCPP_ERROR(get_logger(), "Serial port exception: %s", ex.what());
@@ -286,7 +306,7 @@ void StandardRobotPpRos2Node::serialPortProtect()
         }
       } catch (const std::exception & close_ex) {
         RCLCPP_ERROR(get_logger(), "Failed to close serial port: %s", close_ex.what());
-        serial_driver_.reset();
+        // serial_driver_.reset();
       }
     }
 
@@ -305,6 +325,7 @@ void StandardRobotPpRos2Node::serialPortProtect()
   }
   is_usb_ok_ = false;
 }
+
 
 
 /********************************************************/
@@ -363,38 +384,46 @@ void StandardRobotPpRos2Node::receiveData()
         RCLCPP_ERROR(get_logger(), "Data segment check sum error!");
         continue;
       }
-
+            
       float current_receive_time_ = fromVector<float>(data_buf, 2);
-      float dt = current_receive_time_ - last_receive_time_;
-      if (dt > RECEIVE_TIMEOUT) {
+      float dt = current_receive_time_ - pkg_last_receive_time_;
+      if (dt <= RECEIVE_TIMEOUT) {
         RCLCPP_WARN(get_logger(), "Receive data timeout! dt: %.2f s", dt);
         continue;
       }
-      last_receive_time_ = current_receive_time_;
+      pkg_last_receive_time_ = current_receive_time_;
 
       switch(data_buf[1]){
-        case 0x01:
+        case RECEIVE_VISION_ID:
           RCLCPP_INFO(get_logger(), "Receive vision data package!");
           break;
-        case 0x02:
-          RefereePackage1 referee_package = fromVector<RefereePackage1>(data_buf);
+        case RECEIVE_REFEREE1_ID: {
+          RefereePackage1 referee_package1 = fromVector<RefereePackage1>(data_buf);
 
-          publish(referee_package.game_status_data);
-          publish(referee_package.event_data);
-          publish(referee_package.robot_status_data);
-          publish(referee_package.hurt_data);
-          publish(referee_package.rfid_data);
-
-          break;
-        case 0x03:
-          RefereePackage2 referee_package = fromVector<RefereePackage2>(data_buf);
-
-          publish(referee_package.robot_pos_data);
-          publish(referee_package.ground_robot_pos_data);
-          publish(referee_package.game_robot_hp_data);
+          pkg_last_receive_time_ = referee_package1.DWT_stamp;
+          publish(referee_package1.game_status_data);
+          publish(referee_package1.event_data);
+          publish(referee_package1.robot_status_data);
+          publish(referee_package1.hurt_data);
+          publish(referee_package1.rfid_status_data);
 
           break;
+        }
+        case RECEIVE_REFEREE2_ID: {
+          RefereePackage2 referee_package2 = fromVector<RefereePackage2>(data_buf);
+
+          pkg_last_receive_time_ = referee_package2.DWT_stamp;
+          publish(referee_package2.robot_pos_data);
+          publish(referee_package2.ground_robot_pos_data);
+          publish(referee_package2.game_robot_hp_data);
+
+          break;
+        }
+        default:
+          RCLCPP_ERROR(get_logger(), "Unknown data package received! ID: %d", data_buf[1]);
+          continue;
       }
+      last_receive_time_ = this->now();
     } catch (const std::exception & ex) {
       RCLCPP_ERROR(get_logger(), "Error receiving data: %s", ex.what());
       is_usb_ok_ = false;
@@ -497,14 +526,14 @@ void StandardRobotPpRos2Node::publish(const GroundRobotPositionPackage::data & p
 {
   combat_rm_interfaces::msg::GroundRobotPosition msg;
 
-  msg.hero_x        = pkg.hero_x;
-  msg.hero_y        = pkg.hero_y;
-  msg.engineer_x    = pkg.engineer_x;
-  msg.engineer_y    = pkg.engineer_y;
-  msg.standard_3_x  = pkg.standard_3_x;
-  msg.standard_3_y  = pkg.standard_3_y;
-  msg.standard_4_x  = pkg.standard_4_x;
-  msg.standard_4_y  = pkg.standard_4_y;
+  msg.hero_position.x        = pkg.hero_x;
+  msg.hero_position.y        = pkg.hero_y;
+  msg.engineer_position.x    = pkg.engineer_x;
+  msg.engineer_position.y    = pkg.engineer_y;
+  msg.standard_3_position.x  = pkg.standard_3_x;
+  msg.standard_3_position.y  = pkg.standard_3_y;
+  msg.standard_4_position.x  = pkg.standard_4_x;
+  msg.standard_4_position.y  = pkg.standard_4_y;
 
   ground_robot_position_pub_->publish(msg);
 }
@@ -541,24 +570,42 @@ void StandardRobotPpRos2Node::sendData()
     try {
       checksum::append_check_sum(
         reinterpret_cast<uint8_t *>(&nav_to_gimbal_data_), sizeof(NavToGimbal));
-      nav_to_gimbal_data_.time_stamp = static_cast<uint64_t>(node->get_clock()->now().nanoseconds());
+      nav_to_gimbal_data_.time_stamp = static_cast<uint64_t>(this->get_clock()->now().nanoseconds());
       // 发送数据
       std::vector<uint8_t> send_data = toVector(nav_to_gimbal_data_);
       serial_driver_->port()->send(send_data);
+      retry_count = 0;
     } catch (const std::exception & ex) {
       RCLCPP_ERROR(get_logger(), "Error sending data: %s", ex.what());
       is_usb_ok_ = false;
     }
-    std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    std::this_thread::sleep_for(std::chrono::milliseconds(20));
   }
 }
 
-void StandardRobotPpRos2Node::NavCmdCallback(const combat_rm_interfaces::msg::NavigationCmd::SharedPtr msg)
+void StandardRobotPpRos2Node::cmdVelCallback(const geometry_msgs::msg::Twist::SharedPtr msg)
 {
-  send_test_data_.data.vx = msg->twist.linear.x * nav_k_;
-  send_test_data_.data.vy = msg->twist.linear.y * nav_k_;
-  send_test_data_.data.chassis_status = msg->chassis_status;
+  nav_k_ = this->get_parameter("nav_k").as_double();
+  nav_to_gimbal_data_.vx = msg->linear.x * nav_k_;
+  nav_to_gimbal_data_.vy = msg->linear.y * nav_k_;
 }
+
+void StandardRobotPpRos2Node::cmdChassisStatusCallback(
+  const example_interfaces::msg::UInt8::SharedPtr msg)
+{
+  nav_to_gimbal_data_.chassis_status = msg->data;
+}
+
+void StandardRobotPpRos2Node::cmdSentryStatusCallback(
+  const example_interfaces::msg::UInt8::SharedPtr msg)
+{
+  nav_to_gimbal_data_.sentry_status = msg->data;
+}
+
+// void StandardRobotPpRos2Node::checkTargetInRegionCallback(const std_msgs::msg::Bool::SharedPtr msg)
+// {
+//   check_target_in_region_ = msg->data;
+// }
 
 bool StandardRobotPpRos2Node::callTriggerService(const std::string & service_name)
 {
