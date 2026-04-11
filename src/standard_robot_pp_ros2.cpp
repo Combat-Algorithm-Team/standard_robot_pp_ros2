@@ -24,7 +24,6 @@
 
 #include "standard_robot_pp_ros2/crc8_crc16.hpp"
 #include "standard_robot_pp_ros2/packet_typedef.hpp"
-#include "standard_robot_pp_ros2/crc8_crc16.hpp"
 #include "std_srvs/srv/trigger.hpp"
 #include "tf2_geometry_msgs/tf2_geometry_msgs.hpp"
 
@@ -208,8 +207,6 @@ void StandardRobotPpRos2Node::getParams()
 
   record_rosbag_ = declare_parameter("record_rosbag", false);
   debug_ = declare_parameter("debug", false);
-
-  // set_detector_color_ = declare_parameter("set_detector_color", false);
 }
 
 /********************************************************/
@@ -289,7 +286,6 @@ void StandardRobotPpRos2Node::serialPortProtect()
         serial_driver_.reset();
       }
     }
-
     // sleep for a while before next check
     std::this_thread::sleep_for(std::chrono::milliseconds(USB_PROTECT_SLEEP_TIME));
   }
