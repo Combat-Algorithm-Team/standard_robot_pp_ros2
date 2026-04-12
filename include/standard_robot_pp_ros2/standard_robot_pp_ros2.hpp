@@ -22,7 +22,6 @@
 
 #include "rclcpp/rclcpp.hpp"
 
-#include "rm_utils/heartbeat.hpp"
 #include <tf2_ros/transform_broadcaster.h>
 
 #include "standard_robot_pp_ros2/packet_typedef.hpp"
