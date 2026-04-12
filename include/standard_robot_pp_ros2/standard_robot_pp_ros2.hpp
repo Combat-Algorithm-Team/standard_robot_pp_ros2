@@ -19,6 +19,7 @@
 #include <string>
 #include <unordered_map>
 #include <vector>
+#include <atomic>
 
 #include "rclcpp/rclcpp.hpp"
 
@@ -66,7 +67,7 @@ private:
   std::string vision_target_frame_;
   float nav_k_;
 
-  bool is_usb_ok_;
+  std::atomic<bool> is_usb_ok_{false};
   bool debug_;
   std::unique_ptr<IoContext> owned_ctx_;
   std::unique_ptr<drivers::serial_driver::SerialPortConfig> device_config_;
@@ -88,7 +89,6 @@ private:
   rclcpp::Publisher<combat_rm_interfaces::msg::EventData>::SharedPtr event_data_pub_;
   rclcpp::Publisher<combat_rm_interfaces::msg::RobotStatus>::SharedPtr robot_status_pub_;
   rclcpp::Publisher<combat_rm_interfaces::msg::RobotPos>::SharedPtr robot_pos_pub_;
-  rclcpp::Publisher<combat_rm_interfaces::msg::Buff>::SharedPtr buff_pub_;
   rclcpp::Publisher<combat_rm_interfaces::msg::HurtData>::SharedPtr hurt_data_pub_;
   rclcpp::Publisher<combat_rm_interfaces::msg::RfidStatus>::SharedPtr rfid_status_pub_;
   rclcpp::Publisher<combat_rm_interfaces::msg::GroundRobotPosition>::SharedPtr ground_robot_position_pub_;

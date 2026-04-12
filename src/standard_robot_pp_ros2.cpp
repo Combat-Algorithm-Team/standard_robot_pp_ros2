@@ -50,6 +50,9 @@ StandardRobotPpRos2Node::StandardRobotPpRos2Node(const rclcpp::NodeOptions & opt
   getParams();
   createPublisher();
   createSubscription();
+  last_receive_time_ = this->now();
+  pkg_last_receive_time_ = 0.0f;
+  is_usb_ok_ = false;
 
   serial_port_protect_thread_ = std::thread(&StandardRobotPpRos2Node::serialPortProtect, this);
   receive_thread_ = std::thread(&StandardRobotPpRos2Node::receiveData, this);
@@ -91,8 +94,6 @@ void StandardRobotPpRos2Node::createPublisher()
     this->create_publisher<combat_rm_interfaces::msg::RobotStatus>("referee/robot_status", 10);
   robot_pos_pub_ =
     this->create_publisher<combat_rm_interfaces::msg::RobotPos>("referee/robot_pos", 10);
-  buff_pub_ =
-    this->create_publisher<combat_rm_interfaces::msg::Buff>("referee/buff", 10);
   hurt_data_pub_ =
     this->create_publisher<combat_rm_interfaces::msg::HurtData>("referee/hurt_data", 10);
   rfid_status_pub_ =
@@ -219,11 +220,11 @@ void StandardRobotPpRos2Node::serialPortProtect()
 
   while (rclcpp::ok()) {
     try {
-      bool serial_error = false;
+      bool serial_error = !is_usb_ok_;
       if (!serial_driver_ || !serial_driver_->port() || !serial_driver_->port()->is_open()) {
         RCLCPP_WARN(get_logger(), "Serial port is not open, try to reconnect...");
         serial_error = true;
-      } else {
+      } else if (!serial_error) {
         auto now = this->now();
         double dt = (now - last_receive_time_).seconds();
 
@@ -231,7 +232,6 @@ void StandardRobotPpRos2Node::serialPortProtect()
           RCLCPP_WARN(get_logger(), "No data timeout: %.2f sec → reconnect", dt);
           serial_error = true;
         }
-        serial_error = false;
       }
       if (serial_error) {
         is_usb_ok_ = false;
@@ -393,9 +393,9 @@ void StandardRobotPpRos2Node::receiveData()
       pkg_last_receive_time_ = current_receive_time_;
 
       switch(data_buf[1]){
-        case RECEIVE_VISION_ID:
-          RCLCPP_INFO(get_logger(), "Receive vision data package!");
-          break;
+        // case RECEIVE_VISION_ID:
+        //   RCLCPP_INFO(get_logger(), "Receive vision data package!");
+        //   break;
         case RECEIVE_REFEREE1_ID: {
           RefereePackage1 referee_package1 = fromVector<RefereePackage1>(data_buf);
 
@@ -426,6 +426,13 @@ void StandardRobotPpRos2Node::receiveData()
     } catch (const std::exception & ex) {
       RCLCPP_ERROR(get_logger(), "Error receiving data: %s", ex.what());
       is_usb_ok_ = false;
+      try {
+        if (serial_driver_ && serial_driver_->port() && serial_driver_->port()->is_open()) {
+          serial_driver_->port()->close();
+        }
+      } catch (const std::exception & close_ex) {
+        RCLCPP_ERROR(get_logger(), "Close serial port after receive error failed: %s", close_ex.what());
+      }
     }
   }
 }
@@ -577,6 +584,13 @@ void StandardRobotPpRos2Node::sendData()
     } catch (const std::exception & ex) {
       RCLCPP_ERROR(get_logger(), "Error sending data: %s", ex.what());
       is_usb_ok_ = false;
+      try {
+        if (serial_driver_ && serial_driver_->port() && serial_driver_->port()->is_open()) {
+          serial_driver_->port()->close();
+        }
+      } catch (const std::exception & close_ex) {
+        RCLCPP_ERROR(get_logger(), "Close serial port after send error failed: %s", close_ex.what());
+      }
     }
     std::this_thread::sleep_for(std::chrono::milliseconds(20));
   }
