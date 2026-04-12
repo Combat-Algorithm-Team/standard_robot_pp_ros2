@@ -1,61 +1,89 @@
-# ROS 2 Humble 自动化编译检验工作流
 name: ROS2 Humble Build & Test
-on:
-  push:  # 推送到任意分支时触发
-    branches: [ main, master, develop ]
-  pull_request:  # 发起PR时触发（核心，代码合入前检验）
-    branches: [ main, master, develop ]
-  workflow_dispatch:  # 手动触发（可选，方便调试）
 
-# 作业配置
+on:
+  push:
+    branches: [main, master, develop]
+  pull_request:
+    branches: [main, master, develop]
+  workflow_dispatch:
+
 jobs:
-  build:
-    # 运行环境：Ubuntu 22.04（Humble默认配套）
+  build_test:
     runs-on: ubuntu-22.04
+    defaults:
+      run:
+        shell: bash
     steps:
-      # 步骤1：拉取GitHub仓库代码到构建环境
-      - name: Checkout code
+      - name: Checkout repository into ROS workspace
         uses: actions/checkout@v4
         with:
           fetch-depth: 1
+          path: src/standard_robot_pp_ros2
 
-      # 步骤2：设置ROS 2 Humble环境（官方一键安装脚本）
       - name: Setup ROS 2 Humble
         uses: ros-tooling/setup-ros@v0.7
         with:
-          ros_distribution: humble
-          # 安装ros-base（基础版，轻量），若需要桌面版改为desktop
-          package-manager: apt
-          ros-packages: ros-humble-ros-base
+          required-ros-distributions: humble
 
-      # 步骤3：安装Colcon编译工具及依赖
-      - name: Install colcon and dependencies
+      - name: Install build tools
         run: |
-          sudo apt update && sudo apt install -y \
+          sudo apt-get update
+          sudo apt-get install -y \
             python3-colcon-common-extensions \
             python3-rosdep \
-            ros-humble-ament-cmake \
-            ros-humble-ament-cmake-auto \
-            ros-humble-ament-lint-auto
-          # 初始化rosdep并更新（解决包依赖）
+            python3-vcstool \
+            ros-dev-tools
+
+      - name: Import required external dependencies
+        run: |
+          cat > /tmp/required.repos <<'EOF'
+          repositories:
+            combat_rm_interfaces:
+              type: git
+              url: https://github.com/SMBU-PolarBear-Robotics-Team/combat_rm_interfaces.git
+              version: main
+          EOF
+          vcs import src < /tmp/required.repos
+
+      - name: Install rosdep dependencies for build/test
+        run: |
+          source /opt/ros/humble/setup.bash
           sudo rosdep init || true
           rosdep update
-          # 安装项目所有依赖（从package.xml读取）
-          rosdep install --from-paths src --ignore-src -r -y
+          rosdep install \
+            --from-paths src \
+            --ignore-src \
+            --rosdistro humble \
+            --dependency-types buildtool build build_export test \
+            --skip-keys "pb2025_robot_description" \
+            -r -y
 
-      # 步骤4：Colcon编译整个工作区
-      - name: Build ROS 2 workspace
+      - name: Build workspace (symlink install)
         run: |
-          # 激活ROS 2环境
           source /opt/ros/humble/setup.bash
-          # 编译：--symlink-install 方便源码修改（CI中可选），--cmake-args -DCMAKE_BUILD_TYPE=Release 编译发布版
-          colcon build --symlink-install --cmake-args -DCMAKE_BUILD_TYPE=Release
+          colcon build \
+            --symlink-install \
+            --packages-up-to standard_robot_pp_ros2 \
+            --event-handlers console_direct+
 
-      # 步骤5：检验编译结果（可选，运行测试用例）
-      - name: Run tests (ament test)
+      - name: Run tests
         run: |
+          source /opt/ros/humble/setup.bash
           source install/setup.bash
-          # 运行所有功能包的单元测试（基于ament_cmake）
-          colcon test
-          # 显示测试结果
-          colcon test-result --all
+          colcon test \
+            --packages-select standard_robot_pp_ros2 \
+            --event-handlers console_direct+
+          colcon test-result \
+            --all \
+            --verbose \
+            --test-result-base build/standard_robot_pp_ros2
+
+      - name: Upload build/test logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: standard-robot-pp-ros2-build-logs
+          path: |
+            log/latest_build/**
+            build/standard_robot_pp_ros2/Testing/**
+          if-no-files-found: warn
