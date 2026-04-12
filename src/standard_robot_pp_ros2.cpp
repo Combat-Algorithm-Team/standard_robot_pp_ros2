@@ -53,6 +53,7 @@ StandardRobotPpRos2Node::StandardRobotPpRos2Node(const rclcpp::NodeOptions & opt
   last_receive_time_ = this->now();
   pkg_last_receive_time_ = 0.0f;
   is_usb_ok_ = false;
+  tf_broadcaster_ = std::make_unique<tf2_ros::TransformBroadcaster>(*this);
 
   serial_port_protect_thread_ = std::thread(&StandardRobotPpRos2Node::serialPortProtect, this);
   receive_thread_ = std::thread(&StandardRobotPpRos2Node::receiveData, this);
@@ -393,29 +394,31 @@ void StandardRobotPpRos2Node::receiveData()
       pkg_last_receive_time_ = current_receive_time_;
 
       switch(data_buf[1]){
-        // case RECEIVE_VISION_ID:
-        //   RCLCPP_INFO(get_logger(), "Receive vision data package!");
-        //   break;
+        case RECEIVE_VISION_ID: {
+          GimbalToVision gimbal_to_vision = fromVector<GimbalToVision>(data_buf);
+
+          publish(gimbal_to_vision.yaw, gimbal_to_vision.pitch);
+          pkg_last_receive_time_ = gimbal_to_vision.DWT_stamp;
+          break;
+        }
         case RECEIVE_REFEREE1_ID: {
           RefereePackage1 referee_package1 = fromVector<RefereePackage1>(data_buf);
 
-          pkg_last_receive_time_ = referee_package1.DWT_stamp;
           publish(referee_package1.game_status_data);
           publish(referee_package1.event_data);
           publish(referee_package1.robot_status_data);
           publish(referee_package1.hurt_data);
           publish(referee_package1.rfid_status_data);
-
+          pkg_last_receive_time_ = referee_package1.DWT_stamp;
           break;
         }
         case RECEIVE_REFEREE2_ID: {
           RefereePackage2 referee_package2 = fromVector<RefereePackage2>(data_buf);
 
-          pkg_last_receive_time_ = referee_package2.DWT_stamp;
           publish(referee_package2.robot_pos_data);
           publish(referee_package2.ground_robot_pos_data);
           publish(referee_package2.game_robot_hp_data);
-
+          pkg_last_receive_time_ = referee_package2.DWT_stamp;
           break;
         }
         default:
@@ -542,6 +545,27 @@ void StandardRobotPpRos2Node::publish(const GroundRobotPositionPackage::data & p
   msg.standard_4_position.y  = pkg.standard_4_y;
 
   ground_robot_position_pub_->publish(msg);
+}
+
+void StandardRobotPpRos2Node::publish(float yaw, float pitch)
+{
+  // base yaw to odom_vision
+  geometry_msgs::msg::TransformStamped t;
+  t.header.stamp = this->now();
+  t.header.frame_id = "base_yaw_odom";
+  t.child_frame_id = "odom_vision";
+  tf2::Quaternion q1, q2, q;
+  q1.setRPY(0.0, 0.0, yaw);
+  q2.setRPY(0.0, pitch, 0.0);
+  tf2::Vector3 trans1(0.0, 0.0, 0.193);
+  tf2::Vector3 trans2(0.0, 0.0, 0.11035);
+  tf2::Vector3 trans3(0.078, 0.0, 0.0);
+  tf2::Vector3 trans_total =
+    trans1 + (tf2::quatRotate(q1, trans2)) + (tf2::quatRotate(q1 * q2, trans3));
+  t.transform.translation = tf2::toMsg(trans_total);
+  q.setRPY(0.0, 0.0, 0.0);
+  t.transform.rotation = tf2::toMsg(q);
+  tf_broadcaster_->sendTransform(t);
 }
 
 /********************************************************/

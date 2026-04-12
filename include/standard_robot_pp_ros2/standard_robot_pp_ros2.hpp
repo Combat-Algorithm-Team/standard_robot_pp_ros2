@@ -77,7 +77,8 @@ private:
 
   rclcpp::Time last_receive_time_;
   float pkg_last_receive_time_;
-  
+
+  std::unique_ptr<tf2_ros::TransformBroadcaster> tf_broadcaster_;
 
   std::thread receive_thread_;
   std::thread send_thread_;
@@ -116,6 +117,7 @@ private:
   void publish(const RobotPosPackage::data & pkg);
   void publish(const GroundRobotPositionPackage::data & pkg);
   void publish(const GameRobotHpPackage::data & pkg);
+  void publish(float yaw, float pitch);
 
 
   void cmdVelCallback(const geometry_msgs::msg::Twist::SharedPtr msg);
