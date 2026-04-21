@@ -598,9 +598,9 @@ void StandardRobotPpRos2Node::sendData()
     }
 
     try {
+      nav_to_gimbal_data_.time_stamp = static_cast<uint64_t>(this->get_clock()->now().nanoseconds());
       checksum::append_check_sum(
         reinterpret_cast<uint8_t *>(&nav_to_gimbal_data_), sizeof(NavToGimbal));
-      nav_to_gimbal_data_.time_stamp = static_cast<uint64_t>(this->get_clock()->now().nanoseconds());
       // 发送数据
       std::vector<uint8_t> send_data = toVector(nav_to_gimbal_data_);
       serial_driver_->port()->send(send_data);

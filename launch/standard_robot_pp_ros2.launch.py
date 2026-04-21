@@ -127,7 +127,6 @@ def generate_launch_description():
                     "use_rviz": use_rviz,
                     "use_respawn": use_respawn,
                     "log_level": log_level,
-                    "vision_debug": vision_debug,
                 }.items(),
             ),
             Node(
