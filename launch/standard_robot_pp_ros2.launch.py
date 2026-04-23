@@ -100,35 +100,12 @@ def generate_launch_description():
         "log_level", default_value="info", description="log level"
     )
 
-    declare_vision_debug_cmd = DeclareLaunchArgument(
-        "vision_debug",
-        default_value="False",
-        description="",
-    )
-
-
     # Specify the actions
     bringup_cmd_group = GroupAction(
         [
             PushRosNamespace(namespace),
             SetRemap("/tf", "tf"),
             SetRemap("/tf_static", "tf_static"),
-            IncludeLaunchDescription(
-                PythonLaunchDescriptionSource(
-                    os.path.join(
-                        pkg_pb2025_robot_description_dir,
-                        "launch",
-                        "robot_description_launch.py",
-                    )
-                ),
-                launch_arguments={
-                    "params_file": params_file,
-                    "robot_name": robot_name,
-                    "use_rviz": use_rviz,
-                    "use_respawn": use_respawn,
-                    "log_level": log_level,
-                }.items(),
-            ),
             Node(
                 package="standard_robot_pp_ros2",
                 executable="standard_robot_pp_ros2_node",
@@ -155,7 +132,6 @@ def generate_launch_description():
     ld.add_action(declare_use_rviz_cmd)
     ld.add_action(declare_use_respawn_cmd)
     ld.add_action(declare_log_level_cmd)
-    ld.add_action(declare_vision_debug_cmd)
 
     # Add the actions to launch all of nodes
     ld.add_action(bringup_cmd_group)
