@@ -34,9 +34,6 @@ def generate_launch_description():
     pkg_standard_robot_pp_ros2_dir = get_package_share_directory(
         "standard_robot_pp_ros2"
     )
-    pkg_pb2025_robot_description_dir = get_package_share_directory(
-        "pb2025_robot_description"
-    )
 
     # Create the launch configuration variables
     namespace = LaunchConfiguration("namespace")
@@ -45,7 +42,6 @@ def generate_launch_description():
     use_rviz = LaunchConfiguration("use_rviz")
     use_respawn = LaunchConfiguration("use_respawn")
     log_level = LaunchConfiguration("log_level")
-    vision_debug = LaunchConfiguration("vision_debug")
 
     # Create our own temporary YAML files that include substitutions
     configured_params = ParameterFile(

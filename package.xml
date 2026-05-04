@@ -17,8 +17,6 @@
   <depend>rclcpp_components</depend>
   <depend>asio_cmake_module</depend>
   <depend>serial_driver</depend>
-  <depend>tf2_ros</depend>
-  <depend>tf2_geometry_msgs</depend>
   <depend>geometry_msgs</depend>
   <depend>sensor_msgs</depend>
   <depend>std_srvs</depend>
@@ -26,11 +24,10 @@
   <depend>combat_rm_interfaces</depend>
   <!-- <depend>auto_aim_interfaces</depend> -->
 
+  <exec_depend>launch</exec_depend>
   <exec_depend>launch_ros</exec_depend>
+  <exec_depend>ament_index_python</exec_depend>
   <exec_depend>nav2_common</exec_depend>
-  <exec_depend>pb2025_robot_description</exec_depend>
-  <exec_depend>joint_state_publisher</exec_depend>
-  <exec_depend>robot_state_publisher</exec_depend>
 
   <test_depend>ament_lint_auto</test_depend>
   <test_depend>ament_lint_common</test_depend>

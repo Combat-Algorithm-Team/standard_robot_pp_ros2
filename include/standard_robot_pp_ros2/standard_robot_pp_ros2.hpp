@@ -23,8 +23,6 @@
 
 #include "rclcpp/rclcpp.hpp"
 
-#include <tf2_ros/transform_broadcaster.h>
-
 #include "standard_robot_pp_ros2/packet_typedef.hpp"
 #include "sensor_msgs/msg/imu.hpp"
 #include "sensor_msgs/msg/joint_state.hpp"
@@ -78,8 +76,6 @@ private:
   rclcpp::Time last_receive_time_;
   float pkg_last_receive_time_;
 
-  std::unique_ptr<tf2_ros::TransformBroadcaster> tf_broadcaster_;
-
   std::thread receive_thread_;
   std::thread send_thread_;
   std::thread serial_port_protect_thread_;
@@ -94,6 +90,7 @@ private:
   rclcpp::Publisher<combat_rm_interfaces::msg::RfidStatus>::SharedPtr rfid_status_pub_;
   rclcpp::Publisher<combat_rm_interfaces::msg::GroundRobotPosition>::SharedPtr ground_robot_position_pub_;
   rclcpp::Publisher<combat_rm_interfaces::msg::SentryInfo>::SharedPtr sentry_info_pub_;
+  rclcpp::Publisher<sensor_msgs::msg::JointState>::SharedPtr joint_state_pub_;
 
   // Subscribe
   rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr cmd_vel_sub_;
@@ -117,7 +114,7 @@ private:
   void publish(const RobotPosPackage::data & pkg);
   void publish(const GroundRobotPositionPackage::data & pkg);
   void publish(const GameRobotHpPackage::data & pkg);
-  void publish(float yaw, float pitch);
+  void publish(float yaw_diff, float pitch);
 
 
   void cmdVelCallback(const geometry_msgs::msg::Twist::SharedPtr msg);

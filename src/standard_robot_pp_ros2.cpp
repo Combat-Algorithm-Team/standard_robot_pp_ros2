@@ -19,15 +19,11 @@
 #include <thread>
 #include <cstdint>
 #include <bitset>
-#include <Eigen/Geometry>
 #include <rclcpp/logging.hpp>
 
 #include "standard_robot_pp_ros2/crc8_crc16.hpp"
 #include "standard_robot_pp_ros2/packet_typedef.hpp"
 #include "std_srvs/srv/trigger.hpp"
-#include "tf2_geometry_msgs/tf2_geometry_msgs.hpp"
-
-#include <tf2/LinearMath/Matrix3x3.h>
 
 
 #define USB_NOT_OK_SLEEP_TIME 1000   // (ms)
@@ -53,7 +49,6 @@ StandardRobotPpRos2Node::StandardRobotPpRos2Node(const rclcpp::NodeOptions & opt
   last_receive_time_ = this->now();
   pkg_last_receive_time_ = 0.0f;
   is_usb_ok_ = false;
-  tf_broadcaster_ = std::make_unique<tf2_ros::TransformBroadcaster>(*this);
 
   serial_port_protect_thread_ = std::thread(&StandardRobotPpRos2Node::serialPortProtect, this);
   receive_thread_ = std::thread(&StandardRobotPpRos2Node::receiveData, this);
@@ -103,6 +98,8 @@ void StandardRobotPpRos2Node::createPublisher()
     this->create_publisher<combat_rm_interfaces::msg::RobotStatus>("referee/robot_status", 10);
   ground_robot_position_pub_ =
     this->create_publisher<combat_rm_interfaces::msg::GroundRobotPosition>("referee/ground_robot_position", 10);
+  joint_state_pub_ =
+    this->create_publisher<sensor_msgs::msg::JointState>("gimbal_joint_publisher", 10);
 }
 
 void StandardRobotPpRos2Node::createSubscription()
@@ -397,7 +394,7 @@ void StandardRobotPpRos2Node::receiveData()
         case RECEIVE_VISION_ID: {
           GimbalToVision gimbal_to_vision = fromVector<GimbalToVision>(data_buf);
 
-          publish(gimbal_to_vision.yaw, gimbal_to_vision.pitch);
+          publish(gimbal_to_vision.yaw_diff, gimbal_to_vision.pitch);
           pkg_last_receive_time_ = gimbal_to_vision.DWT_stamp;
           break;
         }
@@ -547,25 +544,19 @@ void StandardRobotPpRos2Node::publish(const GroundRobotPositionPackage::data & p
   ground_robot_position_pub_->publish(msg);
 }
 
-void StandardRobotPpRos2Node::publish(float yaw, float pitch)
+void StandardRobotPpRos2Node::publish(float yaw_diff, float pitch)
 {
-  // base yaw to odom_vision
-  geometry_msgs::msg::TransformStamped t;
-  t.header.stamp = this->now();
-  t.header.frame_id = "base_yaw_odom";
-  t.child_frame_id = "odom_vision";
-  tf2::Quaternion q1, q2, q;
-  q1.setRPY(0.0, 0.0, yaw);
-  q2.setRPY(0.0, pitch, 0.0);
-  tf2::Vector3 trans1(0.0, 0.0, 0.193);
-  tf2::Vector3 trans2(0.0, 0.0, 0.11035);
-  tf2::Vector3 trans3(0.078, 0.0, 0.0);
-  tf2::Vector3 trans_total =
-    trans1 + (tf2::quatRotate(q1, trans2)) + (tf2::quatRotate(q1 * q2, trans3));
-  t.transform.translation = tf2::toMsg(trans_total);
-  q.setRPY(0.0, 0.0, 0.0);
-  t.transform.rotation = tf2::toMsg(q);
-  tf_broadcaster_->sendTransform(t);
+  sensor_msgs::msg::JointState joint_msg;
+  joint_msg.header.stamp = this->now();
+  joint_msg.name = {
+    "gimbal_yaw_joint",
+    "gimbal_pitch_joint",
+  };
+  joint_msg.position = {
+    static_cast<double>(yaw_diff),
+    static_cast<double>(pitch),
+  };
+  joint_state_pub_->publish(joint_msg);
 }
 
 /********************************************************/
