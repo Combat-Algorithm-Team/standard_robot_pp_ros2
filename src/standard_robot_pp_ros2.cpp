@@ -589,7 +589,7 @@ void StandardRobotPpRos2Node::sendData()
     }
 
     try {
-      nav_to_gimbal_data_.time_stamp = static_cast<uint64_t>(this->get_clock()->now().nanoseconds());
+      // nav_to_gimbal_data_.time_stamp = static_cast<uint64_t>(this->get_clock()->now().nanoseconds());
       checksum::append_check_sum(
         reinterpret_cast<uint8_t *>(&nav_to_gimbal_data_), sizeof(NavToGimbal));
       // 发送数据
@@ -613,7 +613,8 @@ void StandardRobotPpRos2Node::sendData()
 
 void StandardRobotPpRos2Node::cmdVelCallback(const geometry_msgs::msg::Twist::SharedPtr msg)
 {
-  nav_k_ = this->get_parameter("nav_k").as_double();
+  // nav_k_ = this->get_parameter("nav_k").as_double();
+  nav_to_gimbal_data_.time_stamp = static_cast<uint64_t>(this->get_clock()->now().nanoseconds());
   nav_to_gimbal_data_.vx = msg->linear.x * nav_k_;
   nav_to_gimbal_data_.vy = msg->linear.y * nav_k_;
 }
