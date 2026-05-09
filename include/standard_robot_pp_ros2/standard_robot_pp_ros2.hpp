@@ -15,21 +15,13 @@
 #ifndef STANDARD_ROBOT_PP_ROS2__STANDARD_ROBOT_PP_ROS2_HPP_
 #define STANDARD_ROBOT_PP_ROS2__STANDARD_ROBOT_PP_ROS2_HPP_
 
+#include <atomic>
 #include <memory>
+#include <mutex>
 #include <string>
+#include <thread>
 #include <unordered_map>
 #include <vector>
-#include <atomic>
-
-#include "rclcpp/rclcpp.hpp"
-
-#include "standard_robot_pp_ros2/packet_typedef.hpp"
-#include "sensor_msgs/msg/imu.hpp"
-#include "sensor_msgs/msg/joint_state.hpp"
-#include "serial_driver/serial_driver.hpp"
-#include "example_interfaces/msg/float64.hpp"
-#include "example_interfaces/msg/u_int8.hpp"
-#include "geometry_msgs/msg/twist.hpp"
 
 #include "combat_rm_interfaces/msg/buff.hpp"
 #include "combat_rm_interfaces/msg/event_data.hpp"
@@ -60,20 +52,23 @@ public:
   ~StandardRobotPpRos2Node() override;
 
 private:
-  // Parameter 
+  // Parameter
   std::string device_name_;
   std::string vision_target_frame_;
   float nav_k_;
 
   std::atomic<bool> is_usb_ok_{false};
+  std::atomic<bool> reconnecting_serial_{false};
   bool debug_;
   std::unique_ptr<IoContext> owned_ctx_;
   std::unique_ptr<drivers::serial_driver::SerialPortConfig> device_config_;
   std::unique_ptr<drivers::serial_driver::SerialDriver> serial_driver_;
+  std::mutex serial_mutex_;
   bool record_rosbag_;
   bool set_detector_color_;
 
   rclcpp::Time last_receive_time_;
+  rclcpp::Time last_reconnect_time_;
   float pkg_last_receive_time_;
 
   std::thread receive_thread_;
@@ -88,7 +83,8 @@ private:
   rclcpp::Publisher<combat_rm_interfaces::msg::RobotPos>::SharedPtr robot_pos_pub_;
   rclcpp::Publisher<combat_rm_interfaces::msg::HurtData>::SharedPtr hurt_data_pub_;
   rclcpp::Publisher<combat_rm_interfaces::msg::RfidStatus>::SharedPtr rfid_status_pub_;
-  rclcpp::Publisher<combat_rm_interfaces::msg::GroundRobotPosition>::SharedPtr ground_robot_position_pub_;
+  rclcpp::Publisher<combat_rm_interfaces::msg::GroundRobotPosition>::SharedPtr
+    ground_robot_position_pub_;
   rclcpp::Publisher<combat_rm_interfaces::msg::SentryInfo>::SharedPtr sentry_info_pub_;
   rclcpp::Publisher<sensor_msgs::msg::JointState>::SharedPtr joint_state_pub_;
 
@@ -106,6 +102,20 @@ private:
   void sendData();
   void serialPortProtect();
 
+  bool isSerialPortOpen();
+  bool shouldReconnectSerialPort();
+  void closeSerialPort(const std::string & failure_context);
+  std::string getSerialDeviceSearchBase() const;
+  bool findSerialDevice();
+  bool openSerialPort();
+  void reconnectSerialPort();
+
+  std::vector<uint8_t> receivePacket();
+  bool handleReceivePacket(std::vector<uint8_t> & data_buf);
+  void handleSerialIoError(const std::string & operation, const std::exception & ex);
+  void initNavToGimbalData();
+  void sendNavToGimbalData();
+
   void publish(const GameStatusPackage::data & pkg);
   void publish(const EventDataPackage::data & pkg);
   void publish(const RobotStatusPackage::data & pkg);
@@ -115,7 +125,6 @@ private:
   void publish(const GroundRobotPositionPackage::data & pkg);
   void publish(const GameRobotHpPackage::data & pkg);
   void publish(float yaw_diff, float pitch);
-
 
   void cmdVelCallback(const geometry_msgs::msg::Twist::SharedPtr msg);
   void cmdChassisStatusCallback(example_interfaces::msg::UInt8::SharedPtr msg);
