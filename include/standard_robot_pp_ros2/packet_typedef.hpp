@@ -315,7 +315,10 @@ struct __attribute__((packed)) NavToGimbal
   float vy;
   float vyaw;
 
-  uint8_t reserved[36];
+  uint8_t fortress_status;
+  uint8_t bump_status;
+
+  uint8_t reserved[34];
   uint16_t check_sum;
   uint8_t tail = 0x55;
 };
