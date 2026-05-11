@@ -41,6 +41,7 @@
 #include "sensor_msgs/msg/joint_state.hpp"
 #include "serial_driver/serial_driver.hpp"
 #include "standard_robot_pp_ros2/packet_typedef.hpp"
+#include "std_msgs/msg/u_int8.hpp"
 
 namespace standard_robot_pp_ros2
 {
@@ -92,6 +93,9 @@ private:
   rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr cmd_vel_sub_;
   rclcpp::Subscription<example_interfaces::msg::UInt8>::SharedPtr cmd_chassis_status_sub_;
   rclcpp::Subscription<example_interfaces::msg::UInt8>::SharedPtr cmd_sentry_status_sub_;
+  rclcpp::Subscription<std_msgs::msg::UInt8>::SharedPtr sentry_terrain_state_sub_;
+  rclcpp::Subscription<example_interfaces::msg::UInt8>::SharedPtr target_mode_sub_;
+  rclcpp::Subscription<example_interfaces::msg::UInt8>::SharedPtr bump_status_sub_;
 
   NavToGimbal nav_to_gimbal_data_;
 
@@ -129,6 +133,9 @@ private:
   void cmdVelCallback(const geometry_msgs::msg::Twist::SharedPtr msg);
   void cmdChassisStatusCallback(example_interfaces::msg::UInt8::SharedPtr msg);
   void cmdSentryStatusCallback(example_interfaces::msg::UInt8::SharedPtr msg);
+  void sentryTerrainStateCallback(std_msgs::msg::UInt8::SharedPtr msg);
+  void targetModeCallback(example_interfaces::msg::UInt8::SharedPtr msg);
+  void bumpStatusCallback(example_interfaces::msg::UInt8::SharedPtr msg);
 
   bool callTriggerService(const std::string & service_name);
 };

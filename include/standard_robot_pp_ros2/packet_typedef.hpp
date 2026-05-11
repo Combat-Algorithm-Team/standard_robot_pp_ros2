@@ -309,13 +309,13 @@ struct __attribute__((packed)) NavToGimbal
     
   uint8_t chassis_status;
   uint8_t sentry_status;
-  uint8_t mode;             //0：对装甲板 1：对前哨站 2：对能量机关 3：对基地（）
+  uint8_t target_mode;             //0：对装甲板 1：对前哨站 2：对能量机关 3：对基地（）
 
   float vx;
   float vy;
   float vyaw;
 
-  uint8_t fortress_status;
+  uint8_t terrain_status;
   uint8_t bump_status;
 
   uint8_t reserved[34];

@@ -117,6 +117,18 @@ void StandardRobotPpRos2Node::createSubscription()
     "cmd_sentry_status", 1,
     std::bind(&StandardRobotPpRos2Node::cmdSentryStatusCallback, this, std::placeholders::_1));
 
+  sentry_terrain_state_sub_ = this->create_subscription<std_msgs::msg::UInt8>(
+    "sentry_terrain_state", 1,
+    std::bind(&StandardRobotPpRos2Node::sentryTerrainStateCallback, this, std::placeholders::_1));
+
+  target_mode_sub_ = this->create_subscription<example_interfaces::msg::UInt8>(
+    "target_mode", 1,
+    std::bind(&StandardRobotPpRos2Node::targetModeCallback, this, std::placeholders::_1));
+
+  bump_status_sub_ = this->create_subscription<example_interfaces::msg::UInt8>(
+    "bump_status", 1,
+    std::bind(&StandardRobotPpRos2Node::bumpStatusCallback, this, std::placeholders::_1));
+
   cmd_vel_sub_ = this->create_subscription<geometry_msgs::msg::Twist>(
     "cmd_vel", 10,
     std::bind(&StandardRobotPpRos2Node::cmdVelCallback, this, std::placeholders::_1));
@@ -636,10 +648,12 @@ void StandardRobotPpRos2Node::initNavToGimbalData()
   nav_to_gimbal_data_.time_stamp = 0;
   nav_to_gimbal_data_.chassis_status = 0;
   nav_to_gimbal_data_.sentry_status = 0;
-  nav_to_gimbal_data_.mode = 0.0;
+  nav_to_gimbal_data_.target_mode = 0;
   nav_to_gimbal_data_.vx = 0.0;
   nav_to_gimbal_data_.vy = 0.0;
   nav_to_gimbal_data_.vyaw = 0.0;
+  nav_to_gimbal_data_.terrain_status = 0;
+  nav_to_gimbal_data_.bump_status = 0;
 }
 
 void StandardRobotPpRos2Node::sendNavToGimbalData()
@@ -698,6 +712,23 @@ void StandardRobotPpRos2Node::cmdSentryStatusCallback(
   const example_interfaces::msg::UInt8::SharedPtr msg)
 {
   nav_to_gimbal_data_.sentry_status = msg->data;
+}
+
+void StandardRobotPpRos2Node::sentryTerrainStateCallback(const std_msgs::msg::UInt8::SharedPtr msg)
+{
+  nav_to_gimbal_data_.terrain_status = msg->data;
+}
+
+void StandardRobotPpRos2Node::targetModeCallback(
+  const example_interfaces::msg::UInt8::SharedPtr msg)
+{
+  nav_to_gimbal_data_.target_mode = msg->data;
+}
+
+void StandardRobotPpRos2Node::bumpStatusCallback(
+  const example_interfaces::msg::UInt8::SharedPtr msg)
+{
+  nav_to_gimbal_data_.bump_status = msg->data;
 }
 
 // void StandardRobotPpRos2Node::checkTargetInRegionCallback(const std_msgs::msg::Bool::SharedPtr msg)
