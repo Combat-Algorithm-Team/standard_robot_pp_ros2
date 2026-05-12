@@ -124,6 +124,7 @@ private:
   void publish(const EventDataPackage::data & pkg);
   void publish(const RobotStatusPackage::data & pkg);
   void publish(const HurtDataPackage::data & pkg);
+  void publish(const SentryInfoPackage::data & pkg);
   void publish(const RfidStatusPackage::data & pkg);
   void publish(const RobotPosPackage::data & pkg);
   void publish(const GroundRobotPositionPackage::data & pkg);

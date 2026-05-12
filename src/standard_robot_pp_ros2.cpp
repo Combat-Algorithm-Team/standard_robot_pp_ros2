@@ -96,10 +96,10 @@ void StandardRobotPpRos2Node::createPublisher()
     this->create_publisher<combat_rm_interfaces::msg::RobotPos>("referee/robot_pos", 10);
   hurt_data_pub_ =
     this->create_publisher<combat_rm_interfaces::msg::HurtData>("referee/hurt_data", 10);
+  sentry_info_pub_ =
+    this->create_publisher<combat_rm_interfaces::msg::SentryInfo>("referee/sentry_info", 10);
   rfid_status_pub_ =
     this->create_publisher<combat_rm_interfaces::msg::RfidStatus>("referee/rfid_status", 10);
-  robot_status_pub_ =
-    this->create_publisher<combat_rm_interfaces::msg::RobotStatus>("referee/robot_status", 10);
   ground_robot_position_pub_ =
     this->create_publisher<combat_rm_interfaces::msg::GroundRobotPosition>(
       "referee/ground_robot_position", 10);
@@ -456,6 +456,7 @@ bool StandardRobotPpRos2Node::handleReceivePacket(std::vector<uint8_t> & data_bu
       publish(referee_package1.event_data);
       publish(referee_package1.robot_status_data);
       publish(referee_package1.hurt_data);
+      publish(referee_package1.sentry_info_data);
       publish(referee_package1.rfid_status_data);
       pkg_last_receive_time_ = referee_package1.DWT_stamp;
       break;
@@ -585,6 +586,18 @@ void StandardRobotPpRos2Node::publish(const HurtDataPackage::data & pkg)
   msg.hp_deduction_reason = pkg.hp_deduction_reason;
 
   hurt_data_pub_->publish(msg);
+}
+
+void StandardRobotPpRos2Node::publish(const SentryInfoPackage::data & pkg)
+{
+  combat_rm_interfaces::msg::SentryInfo msg;
+
+  msg.disengaged_state = pkg.disengaged_state;
+  msg.current_state = pkg.current_state;
+  msg.ally_power_rune_state = pkg.ally_power_rune_state;
+  msg.projectile_allowance_17mm = pkg.projectile_allowance_17mm;
+
+  sentry_info_pub_->publish(msg);
 }
 
 void StandardRobotPpRos2Node::publish(const RfidStatusPackage::data & pkg)

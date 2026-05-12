@@ -216,6 +216,7 @@ struct SentryInfoPackage
     uint8_t disengaged_state;
     uint8_t current_state;
     uint8_t ally_power_rune_state;
+    uint16_t projectile_allowance_17mm;
   } __attribute__((packed)) ;
 
   uint16_t crc16;
@@ -257,7 +258,7 @@ struct RefereePackage1
   SentryInfoPackage::data sentry_info_data;
   RfidStatusPackage::data rfid_status_data;
 
-  uint8_t reserved[35];
+  uint8_t reserved[33];
   uint8_t tail;
   uint16_t check_sum;
 } __attribute__((packed));
