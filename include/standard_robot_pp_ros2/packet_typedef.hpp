@@ -310,7 +310,7 @@ struct __attribute__((packed)) NavToGimbal
     
   uint8_t chassis_status;
   uint8_t sentry_status;
-  uint8_t target_mode;             //0：对装甲板 1：对前哨站 2：对能量机关 3：对基地（）
+  uint8_t target_mode;            // 0: 空闲, 1: 自瞄, 2: 小符, 3: 大符
 
   float vx;
   float vy;
