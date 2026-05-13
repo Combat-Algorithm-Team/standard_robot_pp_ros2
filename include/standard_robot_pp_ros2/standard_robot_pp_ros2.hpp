@@ -71,6 +71,8 @@ private:
   rclcpp::Time last_receive_time_;
   rclcpp::Time last_reconnect_time_;
   float pkg_last_receive_time_;
+  bool has_pkg_last_receive_time_;
+  std::atomic<bool> reset_pkg_receive_time_{true};
 
   std::thread receive_thread_;
   std::thread send_thread_;

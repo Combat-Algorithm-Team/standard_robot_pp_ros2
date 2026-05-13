@@ -54,6 +54,8 @@ StandardRobotPpRos2Node::StandardRobotPpRos2Node(const rclcpp::NodeOptions & opt
   last_receive_time_ = this->now();
   last_reconnect_time_ = last_receive_time_;
   pkg_last_receive_time_ = 0.0f;
+  has_pkg_last_receive_time_ = false;
+  reset_pkg_receive_time_ = true;
   is_usb_ok_ = false;
 
   serial_port_protect_thread_ = std::thread(&StandardRobotPpRos2Node::serialPortProtect, this);
@@ -330,6 +332,7 @@ void StandardRobotPpRos2Node::reconnectSerialPort()
     RCLCPP_INFO(get_logger(), "Serial port %s opened successfully!", device_name_.c_str());
     last_reconnect_time_ = this->now();
     last_receive_time_ = last_reconnect_time_;
+    reset_pkg_receive_time_ = true;
     is_usb_ok_ = true;
   } else {
     RCLCPP_ERROR(
@@ -434,12 +437,28 @@ bool StandardRobotPpRos2Node::handleReceivePacket(std::vector<uint8_t> & data_bu
   }
 
   const float current_receive_time = fromVector<float>(data_buf, 2);
-  const float dt = current_receive_time - pkg_last_receive_time_;
-  if (dt <= RECEIVE_TIMEOUT) {
-    RCLCPP_WARN(get_logger(), "Receive data timeout! dt: %.2f s", dt);
-    return false;
+  const bool should_reset_pkg_time = reset_pkg_receive_time_.exchange(false);
+
+  if (
+    should_reset_pkg_time || !has_pkg_last_receive_time_ ||
+    current_receive_time < pkg_last_receive_time_) {
+    if (!should_reset_pkg_time && has_pkg_last_receive_time_) {
+      RCLCPP_WARN(
+        get_logger(), "Receive timestamp reset: previous %.2f s, current %.2f s; resync",
+        pkg_last_receive_time_, current_receive_time);
+    }
+
+    pkg_last_receive_time_ = current_receive_time;
+    has_pkg_last_receive_time_ = true;
+  } else {
+    const float dt = current_receive_time - pkg_last_receive_time_;
+    if (dt <= RECEIVE_TIMEOUT) {
+      RCLCPP_WARN(get_logger(), "Receive data timestamp did not advance! dt: %.2f s", dt);
+      return false;
+    }
+
+    pkg_last_receive_time_ = current_receive_time;
   }
-  pkg_last_receive_time_ = current_receive_time;
 
   switch (data_buf[1]) {
     case RECEIVE_VISION_ID: {
@@ -484,6 +503,7 @@ void StandardRobotPpRos2Node::handleSerialIoError(
 {
   RCLCPP_ERROR(get_logger(), "Error %s data: %s", operation.c_str(), ex.what());
   is_usb_ok_ = false;
+  reset_pkg_receive_time_ = true;
   closeSerialPort(operation + " error");
 }
 
@@ -496,6 +516,7 @@ void StandardRobotPpRos2Node::receiveData()
   while (rclcpp::ok()) {
     // 串口状态
     if (!is_usb_ok_ || reconnecting_serial_) {
+      reset_pkg_receive_time_ = true;
       RCLCPP_WARN(get_logger(), "Receive: Usb is not ok! Wait for : %d s", time_waiting++);
       std::this_thread::sleep_for(kUsbNotOkSleepTime);
       continue;
