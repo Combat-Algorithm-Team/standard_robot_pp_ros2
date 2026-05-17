@@ -120,15 +120,15 @@ void StandardRobotPpRos2Node::createSubscription()
     std::bind(&StandardRobotPpRos2Node::cmdSentryStatusCallback, this, std::placeholders::_1));
 
   sentry_terrain_state_sub_ = this->create_subscription<std_msgs::msg::UInt8>(
-    "sentry_terrain_state", 1,
+    "cmd_terrain_state", 1,
     std::bind(&StandardRobotPpRos2Node::sentryTerrainStateCallback, this, std::placeholders::_1));
 
   target_mode_sub_ = this->create_subscription<example_interfaces::msg::UInt8>(
-    "target_mode", 1,
+    "cmd_target_mode", 1,
     std::bind(&StandardRobotPpRos2Node::targetModeCallback, this, std::placeholders::_1));
 
   bump_status_sub_ = this->create_subscription<example_interfaces::msg::UInt8>(
-    "bump_status", 1,
+    "cmd_bump_status", 1,
     std::bind(&StandardRobotPpRos2Node::bumpStatusCallback, this, std::placeholders::_1));
 
   cmd_vel_sub_ = this->create_subscription<geometry_msgs::msg::Twist>(
